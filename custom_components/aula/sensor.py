@@ -1,268 +1,248 @@
-from .const import DOMAIN
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTime
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util.dt import now
+from typing import Any, List, TypedDict
+import datetime
 import logging
-from datetime import datetime, timedelta
-from homeassistant.helpers.entity import Entity
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant import config_entries, core
-from homeassistant.helpers import entity_platform
-from .client import Client
 
-import voluptuous as vol
-from homeassistant.core import (
-    HomeAssistant,
-    ServiceCall,
-    ServiceResponse,
-    SupportsResponse,
-)
-import homeassistant.helpers.config_validation as cv
+from .entity import AulaEntityBase
+from .aula_coordinator import AulaCoordinator, AulaCoordinatorData
+from .aula_data import get_aula_coordinator
+from .aula_proxy.models.aula_profile_models import AulaChildProfile, AulaDailyOverview
 
 _LOGGER = logging.getLogger(__name__)
 
-from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
-from .const import (
-    CONF_SCHOOLSCHEDULE,
-    CONF_UGEPLAN,
-    DOMAIN,
-)
-
-API_CALL_SERVICE_NAME = "api_call"
-API_CALL_SCHEMA = vol.Schema(
-    {
-        vol.Required("uri"): cv.string,
-        vol.Optional("post_data"): cv.string,
-    }
-)
-
-PARALLEL_UPDATES = 1
-
-
-async def async_setup_entry(
-    hass: core.HomeAssistant,
-    config_entry: config_entries.ConfigEntry,
-    async_add_entities,
-):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
     """Setup sensors from a config entry created in the integrations UI."""
-    config = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator = get_aula_coordinator(hass, entry)
+    entities: List[SensorEntity] = []
+    children = coordinator.data["children"]
+    for child in children:
+        entities.append(AulaStatusSensor(coordinator, child))
+        entities.append(AulaPresenceSensor(coordinator, child))
+        entities.append(AulaPresenceDurationSensor(coordinator, child))
+    async_add_entities(entities)
 
-    if config_entry.options:
-        config.update(config_entry.options)
-    # from .client import Client
-    client = Client(
-        config[CONF_USERNAME],
-        config[CONF_PASSWORD],
-        config[CONF_SCHOOLSCHEDULE],
-        config[CONF_UGEPLAN],
-    )
-    hass.data[DOMAIN]["client"] = client
+class AulaStatusSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: ignore
+    _attr_device_class = SensorDeviceClass.ENUM
 
-    async def async_update_data():
-        client = hass.data[DOMAIN]["client"]
-        await hass.async_add_executor_job(client.update_data)
+    def __init__(self, coordinator: AulaCoordinator, child: AulaChildProfile) -> None:
+        super().__init__(coordinator, context=child, name="status")
+        self._attr_options = [str(val) for val in StateMetaParser.state_options]
+        name = child["name"].split()[0]
+        institution = child["institution_profile"]["institution_name"]
+        self._attr_unique_id = f"{self._attr_unique_id}_{name}_{institution}"
+        self._attr_translation_placeholders = { "name": name, "institution": institution }
+        self._init_data()
 
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name="sensor",
-        update_method=async_update_data,
-        update_interval=timedelta(minutes=5),
-    )
+    def _set_values(self, data: AulaCoordinatorData, context: AulaChildProfile) -> None:
+         # self._attr_translation_placeholders = self.coordinator.data[""]["state"]
+        attributes = dict[str, Any]()
+        daily_overview: AulaDailyOverview | None = None
+        for item in data["daily_overviews"]:
+            if item["institution_profile"]["id"] == context["id"]:
+                daily_overview = item
 
-    # Immediate refresh
-    await coordinator.async_request_refresh()
+        self._attr_icon = "mdi:map-marker-off"
+        self._attr_available = daily_overview is not None
+        attributes["check_in_time"] = None
+        attributes["check_out_time"] = None
+        attributes["check_in_time_expected"] = None
+        attributes["check_out_time_expected"] = None
+        attributes["exit_with"] = None
+        attributes["institution_name"] = None
+        attributes["location_description"] = None
+        attributes["location_icon"] = None
+        attributes["location_name"] = None
 
-    entities = []
-    client = hass.data[DOMAIN]["client"]
-    await hass.async_add_executor_job(client.update_data)
+        if daily_overview is not None:
+            self._attr_native_value = str(daily_overview["status"])
+            statemeta = StateMetaParser.parse_presence(daily_overview["status"])
+            self._attr_icon = statemeta["icon"]
+            if "check_in_time" in daily_overview: attributes["check_in_time"] = daily_overview["check_in_time"]
+            if "check_out_time" in daily_overview: attributes["check_out_time"] = daily_overview["check_out_time"]
+            if "check_in_time_expected" in daily_overview: attributes["check_in_time_expected"] = daily_overview["check_in_time_expected"]
+            if "check_out_time_expected" in daily_overview: attributes["check_out_time_expected"] = daily_overview["check_out_time_expected"]
+            if "exit_with" in daily_overview: attributes["exit_with"] = daily_overview["exit_with"]
+            if "institution_profile" in daily_overview: attributes["institution_name"] = daily_overview["institution_profile"]["institution_name"]
+            if "location" in daily_overview and daily_overview["location"] is not None:
+                attributes["location_description"] = daily_overview["location"]["description"]
+                attributes["location_name"] = daily_overview["location"]["name"]
+                if "icon" in daily_overview["location"]: attributes["location_icon"] = daily_overview["location"]["icon"]
+        self._attr_extra_state_attributes = attributes
 
-    for i, child in enumerate(client._children):
-        # _LOGGER.debug("Presence data for child "+str(child["id"])+" : "+str(client.presence[str(child["id"])]))
-        if client.presence[str(child["id"])] == 1:
-            if str(child["id"]) in client._daily_overview:
-                _LOGGER.debug(
-                    "Found presence data for childid "
-                    + str(child["id"])
-                    + " adding sensor entity."
-                )
-                entities.append(AulaSensor(hass, coordinator, child))
-        else:
-            entities.append(AulaSensor(hass, coordinator, child))
-    # We have data and can now set up the calendar platform:
-    if config[CONF_SCHOOLSCHEDULE]:
-        hass.async_create_task(
-            hass.config_entries.async_forward_entry_setup(config_entry, "calendar")
-        )
-    ####
-    hass.async_create_task(
-        hass.config_entries.async_forward_entry_setup(config_entry, "binary_sensor")
-    )
-    ####
+class AulaPresenceSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: ignore
+    _attr_device_class = SensorDeviceClass.ENUM
 
-    global ugeplan
-    if config[CONF_UGEPLAN]:
-        ugeplan = True
-    else:
-        ugeplan = False
-    async_add_entities(entities, update_before_add=True)
+    def __init__(self, coordinator: AulaCoordinator, child: AulaChildProfile) -> None:
+        super().__init__(coordinator, context=child, name="presence")
+        self._attr_options = [str(val) for val in StateMetaParser.precense_options]
+        name = child["name"].split()[0]
+        institution = child["institution_profile"]["institution_name"]
+        self._attr_unique_id = f"{self._attr_unique_id}_{name}_{institution}"
+        self._attr_translation_placeholders = { "name": name, "institution": institution }
+        self._init_data()
 
-    def custom_api_call_service(call: ServiceCall) -> ServiceResponse:
-        if "post_data" in call.data and len(call.data["post_data"]) > 0:
-            data = client.custom_api_call(call.data["uri"], call.data["post_data"])
-        else:
-            data = client.custom_api_call(call.data["uri"], 0)
-        return data
+    def _set_values(self, data: AulaCoordinatorData, context: AulaChildProfile) -> None:
+         # self._attr_translation_placeholders = self.coordinator.data[""]["state"]
+        attributes = dict[str, Any]()
+        daily_overview: AulaDailyOverview | None = None
+        for item in data["daily_overviews"]:
+            if item["institution_profile"]["id"] == context["id"]:
+                daily_overview = item
 
-    hass.services.async_register(
-        DOMAIN,
-        API_CALL_SERVICE_NAME,
-        custom_api_call_service,
-        schema=API_CALL_SCHEMA,
-        supports_response=SupportsResponse.ONLY,
-    )
+        self._attr_icon = "mdi:map-marker-off"
+        self._attr_available = daily_overview is not None
+        attributes["check_in_time"] = None
+        attributes["check_out_time"] = None
+        attributes["check_in_time_expected"] = None
+        attributes["check_out_time_expected"] = None
+        attributes["exit_with"] = None
+        attributes["institution_name"] = None
 
+        if daily_overview is not None:
+            statemeta = StateMetaParser.parse_presence(daily_overview["status"])
+            self._attr_native_value = statemeta["presence"]
+            self._attr_icon = statemeta["icon"]
+            if "check_in_time" in daily_overview: attributes["check_in_time"] = daily_overview["check_in_time"]
+            if "check_out_time" in daily_overview: attributes["check_out_time"] = daily_overview["check_out_time"]
+            if "check_in_time_expected" in daily_overview: attributes["check_in_time_expected"] = daily_overview["check_in_time_expected"]
+            if "check_out_time_expected" in daily_overview: attributes["check_out_time_expected"] = daily_overview["check_out_time_expected"]
+            if "exit_with" in daily_overview: attributes["exit_with"] = daily_overview["exit_with"]
+            if "institution_profile" in daily_overview: attributes["institution_name"] = daily_overview["institution_profile"]["institution_name"]
+        self._attr_extra_state_attributes = attributes
 
-class AulaSensor(Entity):
-    def __init__(self, hass, coordinator, child) -> None:
-        self._hass = hass
-        self._coordinator = coordinator
-        self._child = child
-        self._client = hass.data[DOMAIN]["client"]
+class AulaPresenceDurationSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: ignore
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
 
-    @property
-    def name(self):
-        childname = self._client._childnames[self._child["id"]].split()[0]
-        institution = self._client._institutions[self._child["id"]]
-        return institution + " " + childname
+    def __init__(self, coordinator: AulaCoordinator, child: AulaChildProfile) -> None:
+        super().__init__(coordinator, name="presence_duration", context=child)
+        name = child["name"].split()[0]
+        institution = child["institution_profile"]["institution_name"]
+        self._attr_unique_id = f"{self._attr_unique_id}_{name}_{institution}"
+        self._attr_translation_placeholders = { "name": name, "institution": institution }
+        self._init_data()
 
-    @property
-    def state(self):
-        """
-        0 = IKKE KOMMET
-        1 = SYG
-        2 = FERIE/FRI
-        3 = KOMMET/TIL STEDE
-        4 = PÅ TUR
-        5 = SOVER
-        8 = HENTET/GÅET
-        """
-        if self._client.presence[str(self._child["id"])] == 1:
-            states = [
-                "Ikke kommet",
-                "Syg",
-                "Ferie/Fri",
-                "Kommet/Til stede",
-                "På tur",
-                "Sover",
-                "6",
-                "7",
-                "Gået",
-                "9",
-                "10",
-                "11",
-                "12",
-                "13",
-                "14",
-                "15",
-            ]
-            daily_info = self._client._daily_overview[str(self._child["id"])]
-            return states[daily_info["status"]]
-        else:
-            _LOGGER.debug("Setting state to n/a for child " + str(self._child["id"]))
-            return "n/a"
+    def _set_values(self, data: AulaCoordinatorData, context: AulaChildProfile) -> None:
+         # self._attr_translation_placeholders = self.coordinator.data[""]["state"]
+        attributes = dict[str, Any]()
+        daily_overview: AulaDailyOverview | None = None
+        for item in data["daily_overviews"]:
+            if item["institution_profile"]["id"] == context["id"]:
+                daily_overview = item
 
-    @property
-    def extra_state_attributes(self):
-        if self._client.presence[str(self._child["id"])] == 1:
-            daily_info = self._client._daily_overview[str(self._child["id"])]
-            try:
-                profilePicture = daily_info["institutionProfile"]["profilePicture"][
-                    "url"
-                ]
-            except:
-                profilePicture = None
+        self._attr_icon = "mdi:timer"
+        self._attr_available = daily_overview is not None
+        attributes["check_in_time"] = None
+        attributes["check_out_time"] = None
 
-        fields = [
-            "location",
-            "sleepIntervals",
-            "checkInTime",
-            "checkOutTime",
-            "activityType",
-            "entryTime",
-            "exitTime",
-            "exitWith",
-            "comment",
-            "spareTimeActivity",
-            "selfDeciderStartTime",
-            "selfDeciderEndTime",
-        ]
-        attributes = {}
-        # _LOGGER.debug("Dump of ugep_attr: "+str(self._client.ugep_attr))
-        # _LOGGER.debug("Dump of ugepnext_attr: "+str(self._client.ugepnext_attr))
-        if ugeplan:
-            if "0062" in self._client.widgets:
-                try:
-                    attributes["huskelisten"] = self._client.huskeliste[
-                        self._child["name"].split()[0]
-                    ]
-                except:
-                    attributes["huskelisten"] = "Not available"
-            try:
-                attributes["ugeplan"] = self._client.ugep_attr[
-                    self._child["name"].split()[0]
-                ]
-            except:
-                attributes["ugeplan"] = "Not available"
-            try:
-                attributes["ugeplan_next"] = self._client.ugepnext_attr[
-                    self._child["name"].split()[0]
-                ]
-            except:
-                attributes["ugeplan_next"] = "Not available"
-                _LOGGER.debug(
-                    "Could not get ugeplan for next week for child "
-                    + str(self._child["name"].split()[0])
-                    + ". Perhaps not available yet."
-                )
-        if self._client.presence[str(self._child["id"])] == 1:
-            for attribute in fields:
-                if attribute == "exitTime" and daily_info[attribute] == "23:59:00":
-                    attributes[attribute] = None
-                else:
-                    try:
-                        attributes[attribute] = datetime.strptime(
-                            daily_info[attribute], "%H:%M:%S"
-                        ).strftime("%H:%M")
-                    except:
-                        attributes[attribute] = daily_info[attribute]
-            attributes["profilePicture"] = profilePicture
-            attributes["institutionProfileId"] = daily_info["institutionProfile"]["id"]
-        return attributes
+        if daily_overview is not None:
+            statemeta = StateMetaParser.parse_presencetimer(daily_overview["status"])
+            self._attr_icon = statemeta["icon"]
+            intime: datetime.time|None = None
+            outtime: datetime.time|None = None
 
-    @property
-    def should_poll(self):
-        """No need to poll. Coordinator notifies entity of updates."""
-        return False
+            if "check_in_time" in daily_overview:
+                attributes["check_in_time"] = daily_overview["check_in_time"]
+                intime = daily_overview["check_in_time"]
+            if "check_out_time" in daily_overview:
+                attributes["check_out_time"] = daily_overview["check_out_time"]
+                outtime = daily_overview["check_out_time"]
 
-    @property
-    def available(self):
-        """Return if entity is available."""
-        return self._coordinator.last_update_success
+            timervalue = 0
+            nowtime:datetime.time|None = None
+            if intime is not None:
+                if outtime is None:
+                    nowtime = now().time()
+                    if intime > nowtime:
+                        outtime = intime
+                    else:
+                        outtime = nowtime
 
-    @property
-    def unique_id(self):
-        unique_id = "aula" + str(self._child["id"])
-        _LOGGER.debug("Unique ID for child " + str(self._child["id"]) + " " + unique_id)
-        return unique_id
+                indatetime = datetime.datetime.today() + datetime.timedelta(hours=intime.hour, minutes=intime.minute, seconds=intime.second)
+                outdatetime = datetime.datetime.today() + datetime.timedelta(hours=outtime.hour, minutes=outtime.minute, seconds=outtime.second)
 
-    @property
-    def icon(self):
-        return "mdi:account-school"
+                timervalue = (outdatetime - indatetime).total_seconds() / 60
+                timervalue = round(timervalue, 0)
 
-    async def async_update(self):
-        """Update the entity. Only used by the generic entity update service."""
-        await self._coordinator.async_request_refresh()
+            _LOGGER.debug(f"Presence duration calculated: {timervalue} (check_in_time={intime}, check_out_time={outtime}{"" if nowtime is None else f"(calculated from current time: '{nowtime}')"})")
 
-    async def async_added_to_hass(self):
-        """When entity is added to hass."""
-        self.async_on_remove(
-            self._coordinator.async_add_listener(self.async_write_ha_state)
-        )
+            self._attr_native_value = timervalue
+        self._attr_extra_state_attributes = attributes
+
+class StateMeta(TypedDict):
+    presence: str|None
+    icon: str
+
+class StateFlag:
+    NOT_PRESENT = 0
+    SICK = 1
+    REPORTED_ABSCENT = 2
+    PRESENT = 3
+    FIELD_TRIP = 4
+    SLEEPING = 5
+    SPARE_TIME_ACTIVITY = 6
+    PRESENT_AT_LOCATION = 7
+    CHECKED_OUT = 8
+    RESERVED_1 = 9
+    RESERVED_2 = 10
+
+class PresenceFlag:
+    NOT_PRESENT = "not_present"
+    PRESENT = "present"
+    UNKNOWN = "unknown"
+
+class StateMetaParser:
+    state_options: List[int] = [
+        StateFlag.NOT_PRESENT,
+        StateFlag.SICK,
+        StateFlag.REPORTED_ABSCENT,
+        StateFlag.PRESENT,
+        StateFlag.FIELD_TRIP,
+        StateFlag.SLEEPING,
+        StateFlag.SPARE_TIME_ACTIVITY,
+        StateFlag.PRESENT_AT_LOCATION,
+        StateFlag.CHECKED_OUT,
+        StateFlag.RESERVED_1,
+        StateFlag.RESERVED_2,
+    ]
+
+    precense_options: List[str] = [
+        PresenceFlag.NOT_PRESENT,
+        PresenceFlag.PRESENT,
+        PresenceFlag.UNKNOWN,
+    ]
+
+    @staticmethod
+    def parse_presence(status: int|None) -> StateMeta:
+        match status:
+            case StateFlag.NOT_PRESENT:
+                return { "presence": PresenceFlag.NOT_PRESENT, "icon": "mdi:map-marker-question" }
+            case StateFlag.SICK | StateFlag.REPORTED_ABSCENT:
+                return { "presence": PresenceFlag.PRESENT, "icon": "mdi:hospital-marker" }
+            case StateFlag.SPARE_TIME_ACTIVITY | StateFlag.CHECKED_OUT:
+                return { "presence": PresenceFlag.NOT_PRESENT, "icon": "mdi:map-marker-check" }
+            case StateFlag.PRESENT | StateFlag.FIELD_TRIP | StateFlag.SLEEPING | StateFlag.PRESENT_AT_LOCATION:
+                return { "presence": PresenceFlag.PRESENT, "icon": "mdi:map-marker" }
+            case _:
+                return { "presence": PresenceFlag.UNKNOWN, "icon": "mdi:map-marker-off" }
+
+    @staticmethod
+    def parse_presencetimer(status: int|None) -> StateMeta:
+        match status:
+            case StateFlag.NOT_PRESENT:
+                return { "presence": None, "icon": "mdi:timer" }
+            case StateFlag.SICK | StateFlag.REPORTED_ABSCENT:
+                return { "presence": None, "icon": "mdi:timer-remove" }
+            case StateFlag.SPARE_TIME_ACTIVITY | StateFlag.CHECKED_OUT:
+                return { "presence": None, "icon": "mdi:timer-check" }
+            case StateFlag.PRESENT | StateFlag.FIELD_TRIP | StateFlag.SLEEPING | StateFlag.PRESENT_AT_LOCATION:
+                return { "presence": None, "icon": "mdi:timer-play" }
+            case _:
+                return { "presence": None, "icon": "mdi:timer-alert" }

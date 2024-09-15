@@ -1,35 +1,142 @@
 {
-  "services": {
-    "api_call": {
-      "name": "API Kald",
-      "description": "Lav et custom API kald til Aula",
-      "fields": {
-        "uri": {
-          "name": "uri",
-          "description": "URI"
-        },
-        "post_data": {
-          "name": "post_data",
-          "description": "Post data i JSON format. Hvis ikke angivet, laver vi et GET request"
-        }
-      }
-    }
-  },
   "config": {
+    "abort": {
+      "missing_entry_data": "Enhedsdata kunne ikke findes."
+    },
     "error": {
-      "1": "Unknown error",
-      "2": "Unknown error"
+      "id_already_in_use": "ID er allerede i brug. Brug venligst et andet ID.",
+      "invalid_auth": "Login mislykkedes. Tjek venligst dit brugernavn og adgangskode og prøv igen.",
+      "invalid_email": "Ugyldig email.",
+      "invalid_id": "Ugyldigt ID.",
+      "invalid_password": "Ugyldig adgangskode.",
+      "invalid_response": "Ugyldigt svar fra API, prøv venligst igen senere."
     },
     "step": {
-      "user": {
+      "conf": {
         "data": {
-          "username": "Unilogin brugernavn",
+          "id": "Enheds ID",
           "password": "Unilogin password",
+          "schoolschedule": "Tilføj skoleskemaer som kalender entiteter?",
+          "ugeplan": "Tilføj ugeplaner som sensor attributter?",
+          "username": "Unilogin brugernavn"
+        },
+        "description": "Indtast dine Unilogin oplysninger",
+        "title": "Aula"
+      },
+      "options": {
+        "data": {
           "schoolschedule": "Tilføj skoleskemaer som kalender entiteter?",
           "ugeplan": "Tilføj ugeplaner som sensor attributter?"
         },
-        "description": "Indtast dine Unilogin oplysninger",
-        "title": "Login"
+        "description": "",
+        "title": "Indstillinger"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "unread_message": {
+        "name": "Ulæst Besked",
+        "state_attributes": {
+          "recipients": {
+            "name": "Modtagere"
+          },
+          "subject": {
+            "name": "Emne"
+          },
+          "text": {
+            "name": "Indhold"
+          },
+          "timestamp": {
+            "name": "Tidsstempel"
+          }
+        }
+      }
+    },
+    "sensor": {
+      "presence": {
+        "name": "Tilstede {name} {institution}",
+        "state": {
+          "not_present": "Ikke tilstede",
+          "present": "Tilstede",
+          "unknown": "Ukendt"
+        },
+        "state_attributes": {
+          "check_in_time": {
+            "name": "Check-in Tid"
+          },
+          "check_in_time_expected": {
+            "name": "Check-in Tid Forventet"
+          },
+          "check_out_time": {
+            "name": "Check-out Tid"
+          },
+          "check_out_time_expected": {
+            "name": "Check-out Tid Forventet"
+          },
+          "exit_with": {
+            "name": "Hentes af"
+          },
+          "institution_name": {
+            "name": "Institutionsnavn"
+          }
+        }
+      },
+      "presence_duration": {
+        "name": "Tilstede Varighed {name} {institution}",
+        "state_attributes": {
+          "check_in_time": {
+            "name": "Check-in Tid"
+          },
+          "check_out_time": {
+            "name": "Check-out Tid"
+          }
+        }
+      },
+      "status": {
+        "name": "Status {name} {institution}",
+        "state": {
+          "0": "Ikke til stede",
+          "1": "Syg",
+          "10": "10",
+          "2": "Meldt fraværende",
+          "3": "Tilstede",
+          "4": "Udflugt",
+          "5": "Sover",
+          "6": "Fritidsaktivitet",
+          "7": "Tilstede på lokation",
+          "8": "Tjekket ud",
+          "9": "9"
+        },
+        "state_attributes": {
+          "check_in_time": {
+            "name": "Check-in Tid"
+          },
+          "check_in_time_expected": {
+            "name": "Check-in Tid Forventet"
+          },
+          "check_out_time": {
+            "name": "Check-out Tid"
+          },
+          "check_out_time_expected": {
+            "name": "Check-out Tid Forventet"
+          },
+          "exit_with": {
+            "name": "Hentes af"
+          },
+          "institution_name": {
+            "name": "Institutionsnavn"
+          },
+          "location_description": {
+            "name": "Lokationsbeskrivelse"
+          },
+          "location_icon": {
+            "name": "Lokationsikon"
+          },
+          "location_name": {
+            "name": "Lokationsnavn"
+          }
+        }
       }
     }
   },
@@ -38,10 +145,10 @@
       "1": "Unknown error"
     },
     "step": {
-      "user": {
+      "conf": {
         "data": {
-          "username": "Unilogin brugernavn",
-          "password": "Unilogin password"
+          "password": "Unilogin password",
+          "username": "Unilogin brugernavn"
         },
         "description": "Indtast dine Unilogin oplysninger",
         "title": "Login"
@@ -54,6 +161,22 @@
         "description": "",
         "title": "Login"
       }
+    }
+  },
+  "services": {
+    "api_call": {
+      "description": "Lav et brugerdefineret API-kald til Aula",
+      "fields": {
+        "post_data": {
+          "description": "Post data i JSON format. Hvis ikke angivet, laver vi et GET request",
+          "name": "post_data"
+        },
+        "uri": {
+          "description": "URI for kaldet",
+          "name": "uri"
+        }
+      },
+      "name": "API Kald"
     }
   }
 }

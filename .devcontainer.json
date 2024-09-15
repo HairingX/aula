@@ -3,7 +3,8 @@
     "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
     "postCreateCommand": "scripts/setup.sh",
     "appPort": [
-        "1337:8123"
+        "1337:8123",
+        "6789:6789"
     ],
     "portsAttributes": {
         "8123": {
@@ -18,7 +19,8 @@
                 "github.vscode-pull-request-github",
                 "ryanluker.vscode-coverage-gutters",
                 "ms-python.vscode-pylance",
-                "ms-python.black-formatter"
+                "ms-python.black-formatter",
+                "eamodio.gitlens"
             ],
             "settings": {
                 "files.eol": "\n",

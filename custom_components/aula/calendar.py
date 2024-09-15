@@ -1,30 +1,23 @@
 from datetime import datetime, timedelta
-import logging, time
-from .const import DOMAIN
-from homeassistant import config_entries, core
-from .const import CONF_SCHOOLSCHEDULE
-from homeassistant.components.calendar import (
-    CalendarEntity,
-    CalendarEvent,
-)
+from homeassistant.components.calendar import CalendarEntity,CalendarEvent
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import Throttle
+import logging
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=10)
 PARALLEL_UPDATES = 1
 
-async def async_setup_entry(
-    hass: core.HomeAssistant,
-    config_entry: config_entries.ConfigEntry,
-    async_add_entities,
-):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
     config = hass.data[DOMAIN][config_entry.entry_id]
     if config_entry.options:
         config.update(config_entry.options)
     from .client import Client
-    if not config[CONF_SCHOOLSCHEDULE] == True:
-        return True
     client = hass.data[DOMAIN]["client"]
     calendar_devices = []
     calendar = []
@@ -60,7 +53,7 @@ class CalendarDevice(CalendarEntity):
     def update(self):
         """Update all Calendars."""
         self.data.update()
-        
+
     async def async_get_events(self, hass, start_date, end_date):
         """Get all events in a specific time frame."""
         return await self.data.async_get_events(hass, start_date, end_date)

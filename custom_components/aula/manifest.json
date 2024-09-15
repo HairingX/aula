@@ -5,15 +5,15 @@
         "http"
     ],
     "codeowners": [
-        "@scaarup"
+        "@hairingx"
     ],
     "config_flow": true,
-    "documentation": "https://github.com/scaarup/aula/blob/main/README.md",
+    "documentation": "https://github.com/hairingx/aula/blob/main/README.md",
     "iot_class": "cloud_polling",
-    "issue_tracker": "https://github.com/scaarup/aula/issues",
+    "issue_tracker": "https://github.com/hairingx/aula/issues",
     "requirements": [
         "beautifulsoup4",
         "lxml"
     ],
-    "version": "0.1.40"
+    "version": "0.0.10"
 }

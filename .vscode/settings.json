@@ -13,5 +13,15 @@
         "--profile",
         "black"
     ],
-    "python.formatting.provider": "black"
+    "python.formatting.provider": "black",
+    "python.testing.unittestArgs": [
+        "-v",
+        "-s",
+        "./custom_components/aula/aula_proxy",
+        "-p",
+        "test_*.py"
+    ],
+    "python.testing.pytestEnabled": false,
+    "python.testing.unittestEnabled": true
 }
+// /custom_components/aula/aula_proxy

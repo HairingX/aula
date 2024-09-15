@@ -1,19 +1,27 @@
 {
   "config": {
+    "abort": {
+      "missing_entry_data": "Entry data for the device could not be found."
+    },
     "error": {
-      "1": "Unknown error",
-      "2": "Unknown error"
+      "id_already_in_use": "ID is already in use. Please use a different ID.",
+      "invalid_auth": "Login failed. Please check your username and password and try again.",
+      "invalid_email": "Invalid email.",
+      "invalid_id": "Invalid ID.",
+      "invalid_password": "Invalid password.",
+      "invalid_response": "Invalid response from API, please try again later."
     },
     "step": {
-      "user": {
+      "conf": {
         "data": {
-          "username": "Unilogin username",
+          "id": "Entity ID",
           "password": "Unilogin password",
           "schoolschedule": "Add school schedules as calendar entities?",
-          "ugeplan": "Add ugeplaner as sensor attributes?"
+          "ugeplan": "Add ugeplaner as sensor attributes?",
+          "username": "Unilogin username"
         },
-        "description": "Enter your Unilogin credentials...",
-        "title": "Authentication"
+        "description": "Enter your Unilogin credentials",
+        "title": "Aula"
       },
       "options": {
         "data": {
@@ -25,19 +33,118 @@
       }
     }
   },
+  "entity": {
+    "binary_sensor": {
+      "unread_message": {
+        "name": "Unread Message",
+        "state_attributes": {
+          "recipients": {
+            "name": "Recipients"
+          },
+          "subject": {
+            "name": "Subject"
+          },
+          "text": {
+            "name": "Content"
+          },
+          "timestamp": {
+            "name": "Timestamp"
+          }
+        }
+      }
+    },
+    "sensor": {
+      "presence": {
+        "name": "Presence {name} {institution}",
+        "state": {
+          "not_present": "Not Present",
+          "present": "Present",
+          "unknown": "Unknown"
+        },
+        "state_attributes": {
+          "check_in_time": {
+            "name": "Check-in Time"
+          },
+          "check_in_time_expected": {
+            "name": "Entry Time"
+          },
+          "check_out_time": {
+            "name": "Check-out Time"
+          },
+          "check_out_time_expected": {
+            "name": "Exit Time"
+          },
+          "exit_with": {
+            "name": "Exit With"
+          },
+          "institution_name": {
+            "name": "Institution Name"
+          }
+        }
+      },
+      "presence_duration": {
+        "name": "Present Duration {name} {institution}",
+        "state_attributes": {
+          "check_in_time": {
+            "name": "Check-in Time"
+          },
+          "check_out_time": {
+            "name": "Check-out Time"
+          }
+        }
+      },
+      "status": {
+        "name": "Status {name} {institution}",
+        "state": {
+          "0": "Not present",
+          "1": "Sick",
+          "10": "10",
+          "2": "Reported absent",
+          "3": "Present",
+          "4": "Field trip",
+          "5": "Sleeping",
+          "6": "Spare time activity",
+          "7": "Present at location",
+          "8": "Checked out",
+          "9": "9"
+        },
+        "state_attributes": {
+          "check_in_time": {
+            "name": "Check-in Time"
+          },
+          "check_in_time_expected": {
+            "name": "Check-in Time Expected"
+          },
+          "check_out_time": {
+            "name": "Check-out Time"
+          },
+          "check_out_time_expected": {
+            "name": "Check-out Time Expected"
+          },
+          "exit_with": {
+            "name": "Exit With"
+          },
+          "institution_name": {
+            "name": "Institution Name"
+          },
+          "location_description": {
+            "name": "Location Description"
+          },
+          "location_icon": {
+            "name": "Location Icon"
+          },
+          "location_name": {
+            "name": "Location Name"
+          }
+        }
+      }
+    }
+  },
   "options": {
     "error": {
       "1": "Unknown error"
     },
     "step": {
-      "user": {
-        "data": {
-          "username": "Unilogin username",
-          "password": "Unilogin password"
-        },
-        "description": "Enter your Unilogin credentials...",
-        "title": "Authentication"
-      },
       "options": {
         "data": {
           "schoolschedule": "Add school schedules as calendar entities?",
@@ -45,7 +152,31 @@
         },
         "description": "",
         "title": "Options"
+      },
+      "user": {
+        "data": {
+          "password": "Unilogin password",
+          "username": "Unilogin username"
+        },
+        "description": "Enter your Unilogin credentials...",
+        "title": "Authentication"
       }
+    }
+  },
+  "services": {
+    "api_call": {
+      "description": "Make a custom API call to Aula",
+      "fields": {
+        "post_data": {
+          "description": "JSON formatted post data, if not defined, request will be GET",
+          "name": "post_data"
+        },
+        "uri": {
+          "description": "URI for the call",
+          "name": "uri"
+        }
+      },
+      "name": "API Call"
     }
   }
 }

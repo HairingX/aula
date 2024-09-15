@@ -1,91 +1,53 @@
-from datetime import timedelta
-from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant import config_entries, core
-#from homeassistant.util import Throttle
+from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from typing import Any, List
 import logging
 
-from .const import DOMAIN
+from .entity import AulaEntityBase
+from .aula_coordinator import AulaCoordinator, AulaCoordinatorData
+from .aula_data import get_aula_coordinator
+from .aula_proxy.models.aula_message_thread_models import AulaMessageThread
 
 _LOGGER = logging.getLogger(__name__)
-SCAN_INTERVAL = timedelta(seconds=300.0)
 
-async def async_setup_entry(hass: core.HomeAssistant, config_entry: config_entries.ConfigEntry, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
+    """Setup binary sensors from a config entry created in the integrations UI."""
+    coordinator = get_aula_coordinator(hass, entry)
+    entities: List[BinarySensorEntity] = []
+    entities.append(AulaUnreadMessageBinarySensor(coordinator))
+    async_add_entities(entities)
 
-    client = hass.data[DOMAIN]["client"]
-    if client.unread_messages == 1:
-        try:
-            subject = client.message["subject"]
-        except:
-            subject = ""
-        try:
-            text = client.message["text"]
-        except:
-            text = ""
-        try:
-            sender = client.message["sender"]
-        except:
-            sender = ""
-    else:
-        subject = ""
-        text = ""
-        sender= ""
+class AulaUnreadMessageBinarySensor(AulaEntityBase[None], BinarySensorEntity): # type: ignore
+    def __init__(self, coordinator: AulaCoordinator):
+        super().__init__(coordinator, name="unread_message", context=None)
+        self._init_data()
 
-    sensors = []
-    device = AulaBinarySensor(hass=hass, unread=client.unread_messages, subject=subject, text=text, sender=sender)
-    sensors.append(device)
-    async_add_entities(sensors, True)
+    def _set_values(self, data: AulaCoordinatorData, context:None) -> None:
+        self._attr_is_on = False
+        threads = self.coordinator.data["message_threads"]
+        unread_thread: AulaMessageThread|None = None
+        for thread in threads:
+            if not thread["read"]:
+                unread_thread = thread
 
-
-class AulaBinarySensor(BinarySensorEntity, RestoreEntity):
-    def __init__(self,hass,unread,subject,text,sender):
-        self._hass = hass
-        self._unread = unread
-        self._subject = subject
-        self._text = text
-        self._sender = sender
-        self._client = self._hass.data[DOMAIN]["client"]
-
-    @property
-    def extra_state_attributes(self):
-        attributes = {}
-        attributes["subject"] = self._subject
-        attributes["text"] = self._text
-        attributes["sender"] = self._sender
-        attributes["friendly_name"] = "Aula message"
-        return attributes
-
-    @property
-    def unique_id(self):
-        unique_id = "aulamessage"
-        return unique_id
-
-    @property
-    def icon(self):
-        return 'mdi:email'
-
-    @property
-    def friendly_name(self):
-        return "Aula message"
-
-    @property
-    def is_on(self):
-        if self._state == 1:
-            return True
-        if self._state == 0:
-            return False
-
-    def update(self):
-        if self._client.unread_messages == 1:
-            _LOGGER.debug("There are unread message(s)")
-            #_LOGGER.debug("Latest message: "+str(self._client.message))
-            self._subject = self._client.message["subject"]
-            self._text = self._client.message["text"]
-            self._sender = self._client.message["sender"]
-            self._state = 1
-        else:
-            _LOGGER.debug("There are NO unread messages")
-            self._state = 0
-            self._subject = ""
-            self._text = ""
-            self._sender = ""
+        self._attr_is_on = unread_thread is not None
+        self._attr_icon = 'mdi:email'
+        attributes = dict[str, Any]()
+        attributes["subject"] = None
+        attributes["timestamp"] = None
+        attributes["recipients"] = None
+        attributes["text"] = None
+        if unread_thread is not None:
+            attributes["subject"] = unread_thread["subject"]
+            attributes["recipients"] = ", ".join(rec["answer_directly_name"] for rec in unread_thread["recipients"])
+            if unread_thread["extra_recipients_count"] > 0:
+                attributes["recipients"] += f", +{unread_thread["extra_recipients_count"]}"
+            latestmsg = None if "latest_message" not in unread_thread else unread_thread["latest_message"]
+            if latestmsg is not None:
+                attributes["timestamp"] = None if "send_datetime" not in latestmsg else latestmsg["send_datetime"]
+                text = None if "text" not in latestmsg else latestmsg["text"]
+                html = None if text is None else text["html"]
+                attributes["text"] = html
+        self._attr_extra_state_attributes = attributes
