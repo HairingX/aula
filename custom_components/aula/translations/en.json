@@ -53,6 +53,14 @@
         }
       }
     },
+    "calendar": {
+      "events": {
+        "name": "Events {name} {institution}"
+      },
+      "weekly_plan": {
+        "name": "Weekly Plan {name} {institution}"
+      }
+    },
     "sensor": {
       "presence": {
         "name": "Presence {name} {institution}",

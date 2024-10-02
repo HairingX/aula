@@ -13,7 +13,8 @@ class AulaProfileParser(AulaParser):
 
         result: AulaProfile = {
             "profile_id": AulaProfileParser._parse_int(data.get("profileId", 0)),
-            "display_name": AulaProfileParser._parse_str(data.get("displayName")),
+            "name": AulaProfileParser._parse_str(data.get("displayName")),
+            "first_name": AulaProfileParser._parse_str(data.get("displayName")).split()[0],
             "children": AulaProfileParser.parse_children(data.get("children")),
             "institution_profiles": AulaProfileParser.parse_institutions(data.get("institutionProfiles")),
             "is_latest_data_policy_accepted": AulaProfileParser._parse_nullable_bool(data.get("isLatestDataPolicyAccepted")),
@@ -50,6 +51,7 @@ class AulaProfileParser(AulaParser):
             "id": AulaProfileParser._parse_int(data.get("id")),
             "profile_id": AulaProfileParser._parse_int(data.get("profileId")),
             "user_id": AulaProfileParser._parse_str(data.get("userId")),
+            "first_name": AulaProfileParser._parse_str(data.get("name")).split()[0],
             "name": AulaProfileParser._parse_str(data.get("name")),
             "short_name": AulaProfileParser._parse_str(data.get("shortName")),
             "institution_code": AulaProfileParser._parse_str(data.get("institutionCode")),

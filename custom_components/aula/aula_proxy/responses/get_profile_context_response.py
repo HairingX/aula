@@ -71,14 +71,15 @@ class AulaProfileContextInstitutionProfileData(TypedDict):
     uniPersonId: NotRequired[int|None]
 
 class AulaProfileContextChildData(TypedDict):
+    id: int
+    userId: str
+
     hasCustodyOrExtendedAccess: NotRequired[bool|None]
-    id: NotRequired[int|None]
     institutionCode: NotRequired[str|None]
     name: NotRequired[str|None]
     profileId: NotRequired[int|None]
     profilePicture: NotRequired[AulaProfileContextProfilePictureData|None]
     shortName: NotRequired[str|None]
-    userId: NotRequired[str|None]
 
 class AulaProfileContextGroupData(TypedDict):
     dashboardEnabled: NotRequired[bool|None]

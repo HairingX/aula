@@ -12,7 +12,7 @@ class TestMessages(unittest.TestCase):
             profiles = AulaProfileParser.parse_profiles(msg["data"]["profiles"])
             for profile in profiles:
                 self.assertIsNotNone(profile["profile_id"])
-                self.assertIsNotNone(profile["display_name"])
+                self.assertIsNotNone(profile["name"])
 
                 #optional
                 # self.assertIsNotNone(profile["age_18_and_older"])

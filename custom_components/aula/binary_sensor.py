@@ -1,4 +1,4 @@
-from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -6,25 +6,25 @@ from typing import Any, List
 import logging
 
 from .entity import AulaEntityBase
-from .aula_coordinator import AulaCoordinator, AulaCoordinatorData
-from .aula_data import get_aula_coordinator
+from .aula_data_coordinator import AulaDataCoordinator, AulaDataCoordinatorData
+from .aula_data import get_aula_data_coordinator
 from .aula_proxy.models.aula_message_thread_models import AulaMessageThread
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
     """Setup binary sensors from a config entry created in the integrations UI."""
-    coordinator = get_aula_coordinator(hass, entry)
+    coordinator = get_aula_data_coordinator(hass, entry)
     entities: List[BinarySensorEntity] = []
     entities.append(AulaUnreadMessageBinarySensor(coordinator))
     async_add_entities(entities)
 
 class AulaUnreadMessageBinarySensor(AulaEntityBase[None], BinarySensorEntity): # type: ignore
-    def __init__(self, coordinator: AulaCoordinator):
+    def __init__(self, coordinator: AulaDataCoordinator):
         super().__init__(coordinator, name="unread_message", context=None)
         self._init_data()
 
-    def _set_values(self, data: AulaCoordinatorData, context:None) -> None:
+    def _set_values(self, data: AulaDataCoordinatorData, context:None) -> None:
         self._attr_is_on = False
         threads = self.coordinator.data["message_threads"]
         unread_thread: AulaMessageThread|None = None

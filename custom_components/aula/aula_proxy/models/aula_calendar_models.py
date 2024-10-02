@@ -4,8 +4,8 @@ from typing import Any, List, NotRequired, TypedDict
 from .aula_profile_models import AulaGroup
 
 class AulaCalendarEventTimeSlotEntryIndex(TypedDict):
-    start_time: datetime.datetime
-    end_time: datetime.datetime
+    start_datetime: datetime.datetime
+    end_datetime: datetime.datetime
 
 class AulaCalendarEventTimeSlotEntryAnswer(TypedDict):
     concerning_profile_id: int
@@ -23,6 +23,7 @@ class AulaCalendarEventTimeSlotEntry(TypedDict):
 
 class AulaCalendarEventTimeSlot(TypedDict):
     child_required: bool
+    """This property is not used in Aula website 2024, they use the CalendarEvent.belongs_to_profiles and check if the kids institutionid is in that"""
     time_slots: List[AulaCalendarEventTimeSlotEntry]
 
 class AulaCalendarEventLessonParticipant(TypedDict):

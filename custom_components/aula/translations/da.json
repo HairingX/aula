@@ -53,6 +53,14 @@
         }
       }
     },
+    "calendar": {
+      "events": {
+        "name": "Begivenheder {name} {institution}"
+      },
+      "weekly_plan": {
+        "name": "Ugeplan {name} {institution}"
+      }
+    },
     "sensor": {
       "presence": {
         "name": "Tilstede {name} {institution}",

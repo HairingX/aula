@@ -9,7 +9,8 @@ from homeassistant.loader import async_get_integration
 import logging
 
 from .aula_data import AulaHassData, remove_hass_data, set_hass_data
-from .aula_coordinator import AulaCoordinator
+from .aula_data_coordinator import AulaDataCoordinator
+from .aula_calendar_coordinator import AulaCalendarCoordinator
 from .aula_client import AulaClient
 from .const import DOMAIN, STARTUP
 
@@ -17,6 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
+    Platform.CALENDAR,
     # Platform.CLIMATE,
     # Platform.SWITCH,
     # Platform.NUMBER,
@@ -29,17 +31,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     integration = await async_get_integration(hass, DOMAIN)
     _LOGGER.info(STARTUP, integration.version)
-    _LOGGER.debug(entry.data)
 
     username = str(entry.data.get(CONF_USERNAME))
     password = str(entry.data.get(CONF_PASSWORD))
     client = AulaClient(username, password)
-    coordinator = AulaCoordinator(entry.title, hass, client)
+    data_coordinator = AulaDataCoordinator(entry.title, hass, client)
+    calendar_coordinator = AulaCalendarCoordinator(entry.title, hass, client)
     hass_data: AulaHassData = {
         "username": username,
         "password": password,
         "client": client,
-        "coordinator": coordinator,
+        "data_coordinator": data_coordinator,
+        "calendar_coordinator": calendar_coordinator,
     }
 
     # Fetch initial data so we have data when entities subscribe
@@ -50,7 +53,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # If you do not want to retry setup on failure, use
     # coordinator.async_refresh() instead
     #
-    await coordinator.async_config_entry_first_refresh()
+    await data_coordinator.async_config_entry_first_refresh()
 
     set_hass_data(hass, entry, hass_data)
 

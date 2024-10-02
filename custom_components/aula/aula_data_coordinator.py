@@ -17,16 +17,19 @@ from .aula_proxy.aula_errors import AulaCredentialError
 
 _LOGGER = logging.getLogger(__name__)
 
-class AulaCoordinatorData(TypedDict):
+class AulaDataCoordinatorData(TypedDict):
     device_id: str
     aula_version: int
     profiles: List[AulaProfile]
     children: List[AulaChildProfile]
     daily_overviews: List[AulaDailyOverview]
     message_threads: List[AulaMessageThread]
+    # calendar_events: List[AulaCalendarEvent]
 
-class AulaCoordinator(DataUpdateCoordinator[AulaCoordinatorData]):
+class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
     """My custom coordinator."""
+
+    _client: AulaClient
 
     def __init__(self, device_id: str, hass: HomeAssistant, client: AulaClient):
         """Initialize my coordinator."""
@@ -34,7 +37,7 @@ class AulaCoordinator(DataUpdateCoordinator[AulaCoordinatorData]):
             hass,
             _LOGGER,
             # Name of the data. For logging purposes.
-            name="My sensor",
+            name="general",
             # Polling interval. Will only be polled if there are subscribers.
             update_interval=timedelta(minutes=5),
             # Set always_update to `False` if the data returned from the
@@ -62,7 +65,7 @@ class AulaCoordinator(DataUpdateCoordinator[AulaCoordinatorData]):
         """
         await self.hass.async_add_executor_job(self._connection_check)
 
-    async def _async_update_data(self) -> AulaCoordinatorData:
+    async def _async_update_data(self) -> AulaDataCoordinatorData:
         """Fetch data from API endpoint.
 
         This is the place to pre-process the data to lookup tables
@@ -96,15 +99,14 @@ class AulaCoordinator(DataUpdateCoordinator[AulaCoordinatorData]):
     def _connection_check(self) -> Exception | None:
         return self._client.connection_check()
 
-    def _fetch_data(self) -> AulaCoordinatorData|Exception:
+    def _fetch_data(self) -> AulaDataCoordinatorData|Exception:
         try:
             logindata = self._client.login()
             profiles = logindata["profiles"]
-            # widgets = logindata["widgets"]
+            self.aula_version = logindata["api_version"]
             daily_overviews = self._client.get_daily_overviews(profiles)
             message_threads = self._client.get_message_threads(profiles)
-            self.aula_version = logindata["api_version"]
-            data: AulaCoordinatorData = {
+            data: AulaDataCoordinatorData = {
                 "device_id": self.device_id,
                 "aula_version": self.aula_version,
                 "profiles": profiles,

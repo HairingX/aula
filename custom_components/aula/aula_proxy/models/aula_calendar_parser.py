@@ -105,8 +105,8 @@ class AulaCalendarParser(AulaParser):
     def parse_calendar_event_time_slot_entry_index(data: Dict[str, Any] | None) -> AulaCalendarEventTimeSlotEntryIndex | None:
         if not data: return None
         result: AulaCalendarEventTimeSlotEntryIndex = {
-            "start_time": AulaCalendarParser._parse_datetime(data.get("startTime")),
-            "end_time": AulaCalendarParser._parse_datetime(data.get("endTime")),
+            "start_datetime": AulaCalendarParser._parse_datetime(data.get("startTime")),
+            "end_datetime": AulaCalendarParser._parse_datetime(data.get("endTime")),
         }
         return result
 

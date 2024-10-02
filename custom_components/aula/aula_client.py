@@ -2,15 +2,17 @@ import logging
 from typing import Dict, List, Tuple, TypedDict
 import datetime
 
-
 from .const import API_VERSION
 from .aula_proxy.module import (
+        AulaCalendarEvent,
+        AulaDailyOverview,
+        AulaInstitutionProfile,
+        AulaLoginData,
         AulaMessageThread,
         AulaProfile,
         AulaProxyClient,
-        AulaDailyOverview,
-        AulaCalendarEvent,
-        AulaLoginData,
+        AulaWeeklyPlan,
+        AulaChildProfile,
     )
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,11 +51,14 @@ class AulaClient:
     def get_message_threads(self, profiles: List[AulaProfile]) -> List[AulaMessageThread]:
         return self._proxy.get_message_threads()
 
-    def get_calendar_events(self, profiles: List[AulaProfile]) -> List[AulaCalendarEvent]:
-        return self._proxy.get_calendar_events(profiles)
-
     def get_daily_overviews(self, profiles: List[AulaProfile]) -> List[AulaDailyOverview]:
         return self._proxy.get_daily_overviews(profiles)
+
+    def get_calendar_events(self, profiles: List[AulaInstitutionProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaCalendarEvent]:
+        return self._proxy.get_calendar_events(profiles, start_datetime, end_datetime)
+
+    def get_weekly_plans(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaWeeklyPlan]:
+        return self._proxy.get_weekly_plans(profiles, start_datetime, end_datetime)
 
     # def get_widgets_data(self, profiles: List[AulaProfile]) -> List[Any]:
     #     widgets = self.get_widgets()

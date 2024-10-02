@@ -69,6 +69,7 @@ class AulaChildProfile(TypedDict):
     id: int
     institution_code: str
     institution_profile: AulaInstitutionProfile
+    first_name: str
     name: str
     profile_id: int
     short_name: str
@@ -79,7 +80,8 @@ class AulaChildProfile(TypedDict):
 
 class AulaProfile(TypedDict):
     profile_id: int
-    display_name: str
+    first_name: str
+    name: str
     children: List[AulaChildProfile]
     institution_profiles: List[AulaInstitutionProfile]
 

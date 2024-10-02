@@ -52,21 +52,25 @@ class AulaParser:
 
     @staticmethod
     def _parse_bool(value: Any) -> bool:
+        if isinstance(value, bool): return value
         return value == True
 
     @staticmethod
     def _parse_nullable_bool(value: Any) -> bool | None:
         if value is None: return None
+        if isinstance(value, bool): return value
         return value == True
 
     @staticmethod
     def _parse_int(value: Any) -> int:
         if value is None: return -1
+        if isinstance(value, int): return value
         return int(value)
 
     @staticmethod
     def _parse_nullable_int(value: Any) -> int | None:
         if value is None: return None
+        if isinstance(value, int): return value
         return int(value)
 
     @staticmethod
@@ -82,6 +86,7 @@ class AulaParser:
     @staticmethod
     def _parse_time(value: Any) -> datetime.time:
         if value is None: return datetime.time.min
+        if isinstance(value, datetime.time): return value
         result = datetime.time.fromisoformat(value)
         AulaParser._fix_timezone(result)
         return result
@@ -89,6 +94,7 @@ class AulaParser:
     @staticmethod
     def _parse_nullable_time(value: Any) -> datetime.time | None:
         if value is None: return None
+        if isinstance(value, datetime.time): return value
         result = datetime.time.fromisoformat(value)
         AulaParser._fix_timezone(result)
         return result
@@ -96,16 +102,19 @@ class AulaParser:
     @staticmethod
     def _parse_date(value: Any) -> datetime.date:
         if value is None: return datetime.date.min
+        if isinstance(value, datetime.date): return value
         return datetime.date.fromisoformat(value)
 
     @staticmethod
     def _parse_nullable_date(value: Any) -> datetime.date | None:
         if value is None: return None
+        if isinstance(value, datetime.date): return value
         return datetime.date.fromisoformat(value)
 
     @staticmethod
     def _parse_datetime(value: Any) -> datetime.datetime:
         if value is None: return datetime.datetime.min
+        if isinstance(value, datetime.datetime): return value
         result = datetime.datetime.fromisoformat(value)
         AulaParser._fix_timezone(result)
         return result
@@ -113,6 +122,7 @@ class AulaParser:
     @staticmethod
     def _parse_nullable_datetime(value: Any) -> datetime.datetime | None:
         if value is None: return None
+        if isinstance(value, datetime.datetime): return value
         result = datetime.datetime.fromisoformat(value)
         AulaParser._fix_timezone(result)
         return result

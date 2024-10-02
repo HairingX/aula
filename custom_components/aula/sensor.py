@@ -10,15 +10,15 @@ import datetime
 import logging
 
 from .entity import AulaEntityBase
-from .aula_coordinator import AulaCoordinator, AulaCoordinatorData
-from .aula_data import get_aula_coordinator
+from .aula_data_coordinator import AulaDataCoordinator, AulaDataCoordinatorData
+from .aula_data import get_aula_data_coordinator
 from .aula_proxy.models.aula_profile_models import AulaChildProfile, AulaDailyOverview
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
     """Setup sensors from a config entry created in the integrations UI."""
-    coordinator = get_aula_coordinator(hass, entry)
+    coordinator = get_aula_data_coordinator(hass, entry)
     entities: List[SensorEntity] = []
     children = coordinator.data["children"]
     for child in children:
@@ -30,16 +30,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class AulaStatusSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: ignore
     _attr_device_class = SensorDeviceClass.ENUM
 
-    def __init__(self, coordinator: AulaCoordinator, child: AulaChildProfile) -> None:
+    def __init__(self, coordinator: AulaDataCoordinator, child: AulaChildProfile) -> None:
         super().__init__(coordinator, context=child, name="status")
         self._attr_options = [str(val) for val in StateMetaParser.state_options]
-        name = child["name"].split()[0]
-        institution = child["institution_profile"]["institution_name"]
-        self._attr_unique_id = f"{self._attr_unique_id}_{name}_{institution}"
-        self._attr_translation_placeholders = { "name": name, "institution": institution }
+        first_name = child["first_name"]
+        institution_name = child["institution_profile"]["institution_name"]
+        self._attr_unique_id = f"{self._attr_unique_id}_{first_name}_{institution_name}"
+        self._attr_translation_placeholders = { "name": first_name, "institution": institution_name }
         self._init_data()
 
-    def _set_values(self, data: AulaCoordinatorData, context: AulaChildProfile) -> None:
+    def _set_values(self, data: AulaDataCoordinatorData, context: AulaChildProfile) -> None:
          # self._attr_translation_placeholders = self.coordinator.data[""]["state"]
         attributes = dict[str, Any]()
         daily_overview: AulaDailyOverview | None = None
@@ -78,16 +78,16 @@ class AulaStatusSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: 
 class AulaPresenceSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: ignore
     _attr_device_class = SensorDeviceClass.ENUM
 
-    def __init__(self, coordinator: AulaCoordinator, child: AulaChildProfile) -> None:
+    def __init__(self, coordinator: AulaDataCoordinator, child: AulaChildProfile) -> None:
         super().__init__(coordinator, context=child, name="presence")
         self._attr_options = [str(val) for val in StateMetaParser.precense_options]
-        name = child["name"].split()[0]
-        institution = child["institution_profile"]["institution_name"]
-        self._attr_unique_id = f"{self._attr_unique_id}_{name}_{institution}"
-        self._attr_translation_placeholders = { "name": name, "institution": institution }
+        first_name = child["first_name"]
+        institution_name = child["institution_profile"]["institution_name"]
+        self._attr_unique_id = f"{self._attr_unique_id}_{first_name}_{institution_name}"
+        self._attr_translation_placeholders = { "name": first_name, "institution": institution_name }
         self._init_data()
 
-    def _set_values(self, data: AulaCoordinatorData, context: AulaChildProfile) -> None:
+    def _set_values(self, data: AulaDataCoordinatorData, context: AulaChildProfile) -> None:
          # self._attr_translation_placeholders = self.coordinator.data[""]["state"]
         attributes = dict[str, Any]()
         daily_overview: AulaDailyOverview | None = None
@@ -121,15 +121,15 @@ class AulaPresenceDurationSensor(AulaEntityBase[AulaChildProfile], SensorEntity)
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
 
-    def __init__(self, coordinator: AulaCoordinator, child: AulaChildProfile) -> None:
+    def __init__(self, coordinator: AulaDataCoordinator, child: AulaChildProfile) -> None:
         super().__init__(coordinator, name="presence_duration", context=child)
-        name = child["name"].split()[0]
-        institution = child["institution_profile"]["institution_name"]
-        self._attr_unique_id = f"{self._attr_unique_id}_{name}_{institution}"
-        self._attr_translation_placeholders = { "name": name, "institution": institution }
+        first_name = child["first_name"]
+        institution_name = child["institution_profile"]["institution_name"]
+        self._attr_unique_id = f"{self._attr_unique_id}_{first_name}_{institution_name}"
+        self._attr_translation_placeholders = { "name": first_name, "institution": institution_name }
         self._init_data()
 
-    def _set_values(self, data: AulaCoordinatorData, context: AulaChildProfile) -> None:
+    def _set_values(self, data: AulaDataCoordinatorData, context: AulaChildProfile) -> None:
          # self._attr_translation_placeholders = self.coordinator.data[""]["state"]
         attributes = dict[str, Any]()
         daily_overview: AulaDailyOverview | None = None

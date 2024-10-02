@@ -23,3 +23,16 @@ class AULA_WIDGET_ID(StrEnum):
     # MEEBOOK_OVERVIEW = "0119"
     # """0119 - Notifications from Meebook for parents in Aula. The widget also contains quicklinks for navigation to Meebook from Aula."""
 
+
+class AULA_CALENDAR_EVENT_TYPE(StrEnum):
+    EVENT = 'event'
+    LESSON = 'lesson'
+    HOLIDAY = 'holiday'
+    PRESENCE_HOLIDAY = 'presence_holiday'
+    BIRTHDAY = 'birthday'
+    OTHER = 'other'
+    EXCURSION = 'excursion'
+    SCHOOL_HOME_MEETING = 'school_home_meeting'
+    PARENTAL_MEETING = 'parental_meeting'
+    PERFORMANCE_MEETING = 'performance_meeting'
+    VACATION_REGISTRATION = 'vacation_registration'

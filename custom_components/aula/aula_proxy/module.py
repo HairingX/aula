@@ -24,6 +24,9 @@ from .models.module import (
     AulaProfilePicture,
     AulaToken,
     AulaWidget,
+    AulaWeeklyPlan,
+    AulaDailyPlan,
+    AulaDailyPlanTask,
 )
 
 from .aula_proxy_client import AulaProxyClient
@@ -58,6 +61,10 @@ __all__ = [
     'AulaProfilePicture',
     'AulaToken',
     'AulaWidget',
+
+    'AulaWeeklyPlan',
+    'AulaDailyPlan',
+    'AulaDailyPlanTask',
 
     'AulaProxyClient',
 ]

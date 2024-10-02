@@ -1,62 +1,46 @@
-# from datetime import datetime, timedelta
-# import logging, time
-# from .const import DOMAIN
-# from homeassistant import config_entries, core
-# from homeassistant.components.calendar import (
-#     CalendarEntity,
-#     CalendarEvent,
-# )
+# from datetime import datetime
+# from typing import List
+# from homeassistant.components.calendar import CalendarEntity,CalendarEvent
+# from homeassistant.config_entries import ConfigEntry
+# from homeassistant.core import HomeAssistant
+# from homeassistant.helpers.entity_platform import AddEntitiesCallback
 # from homeassistant.util import Throttle
+# import logging
+
+# from .aula_data_coordinator import AulaDataCoordinator
+# from .aula_proxy.models.aula_profile_models import AulaChildProfile
+# from .entity import AulaEntityBase
+# from .aula_data import get_aula_data_coordinator
+# from .const import DOMAIN
 
 # _LOGGER = logging.getLogger(__name__)
 
-# MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=10)
-# PARALLEL_UPDATES = 1
+# async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
+#     coordinator = get_aula_data_coordinator(hass, entry)
+#     coordinator.data['daily_overviews']
 
-# async def async_setup_entry(
-#     hass: core.HomeAssistant,
-#     config_entry: config_entries.ConfigEntry,
-#     async_add_entities,
-# ):
-#     config = hass.data[DOMAIN][config_entry.entry_id]
-#     if config_entry.options:
-#         config.update(config_entry.options)
-#     from .client import Client
-#     client = hass.data[DOMAIN]["client"]
-#     calendar_devices = []
-#     calendar = []
-#     for i, child in enumerate(client._children):
-#         childid = child["id"]
-#         name = child["name"]
-#         calendar_devices.append(CalendarDevice(hass,calendar,name,childid))
-#     async_add_entities(calendar_devices)
+#     entities: List[CalendarEntity] = []
+#     for child in coordinator.data['children']:
+#         entities.append(AulaCalendar(coordinator, child))
+#     async_add_entities(entities)
 
-# class CalendarDevice(CalendarEntity):
-#     def __init__(self,hass,calendar,name,childid):
-#         self.data = CalendarData(hass,calendar,childid)
-#         self._cal_data = {}
-#         self._name = "Skoleskema "+name
-#         self._childid = childid
+# class AulaCalendar(AulaEntityBase[AulaChildProfile], CalendarEntity): # type: ignore
+#     def __init__(self, coordinator: AulaDataCoordinator, child: AulaChildProfile):
+#         super().__init__(coordinator, name="calendar", context=child)
+#         name = child["name"].split()[0]
+#         institution = child["institution_profile"]["institution_name"]
+#         self._attr_unique_id = f"{self._attr_unique_id}_{name}_{institution}"
+#         self._attr_translation_placeholders = { "name": name, "institution": institution }
+#         self._init_data()
+
+#         # self.data = CalendarData(hass,calendar,childid)
+#         # self._cal_data = {}
+#         # self._name = "Skoleskema "+name
 
 #     @property
 #     def event(self):
 #         """Return the next upcoming event."""
 #         return self.data.event
-
-#     @property
-#     def name(self):
-#         """Return the name of the entity."""
-#         return self._name
-
-#     @property
-#     def unique_id(self):
-#         unique_id = "aulacalendar"+str(self._childid)
-#         _LOGGER.debug("Unique ID for calendar "+str(self._childid)+" "+unique_id)
-#         return unique_id
-
-#     def update(self):
-#         """Update all Calendars."""
-#         self.data.update()
 
 #     async def async_get_events(self, hass, start_date, end_date):
 #         """Get all events in a specific time frame."""
@@ -116,8 +100,3 @@
 #     async def async_get_events(self, hass, start_date, end_date):
 #         events = self.parseCalendarData()
 #         return events
-
-#     @Throttle(MIN_TIME_BETWEEN_UPDATES)
-#     def update(self):
-#         _LOGGER.debug("Updating calendars...")
-#         self.parseCalendarData(self)
