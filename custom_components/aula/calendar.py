@@ -1,12 +1,13 @@
 """Support for Google Calendar Search binary sensors."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
+from homeassistant.helpers.template import DATE_STR_FORMAT
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util.dt import now
-from typing import List
+from typing import Any, List, final
 import logging
 
 from .aula_calendar_coordinator import AulaCalendarCoordinator, AulaCalendarCoordinatorData
@@ -198,6 +199,63 @@ class AulaWeekPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: igno
         if self._profile.id in data.updated_weekly_plans_for_listener_keys:
             return True
         return False
+
+    @final
+    @property
+    def state_attributes(self) -> dict[str, Any] | None: # type: ignore
+        """Return the entity state attributes."""
+        attributes = self._CALENDAR_ENTITY_STATE_ATTRIBUTES()
+        if attributes is not None:
+            weekplans = self.coordinator.get_weekly_plans(self._profile)
+            weeklydayplans = self._get_weekly_plans_for_attributes(weekplans, now().date())
+            attributes["monday"] = weeklydayplans[0]
+            attributes["tuesday"] = weeklydayplans[1]
+            attributes["wednesday"] = weeklydayplans[2]
+            attributes["thursday"] = weeklydayplans[3]
+            attributes["friday"] = weeklydayplans[4]
+            attributes["saturday"] = weeklydayplans[5]
+            attributes["sunday"] = weeklydayplans[6]
+            weeklydayplans = self._get_weekly_plans_for_attributes(weekplans, now().date() + timedelta(weeks=1))
+            attributes["next_monday"] = weeklydayplans[0]
+            attributes["next_tuesday"] = weeklydayplans[1]
+            attributes["next_wednesday"] = weeklydayplans[2]
+            attributes["next_thursday"] = weeklydayplans[3]
+            attributes["next_friday"] = weeklydayplans[4]
+            attributes["next_saturday"] = weeklydayplans[5]
+            attributes["next_sunday"] = weeklydayplans[6]
+        return attributes
+
+    def _CALENDAR_ENTITY_STATE_ATTRIBUTES(self) -> dict[str, Any] | None:
+        """MUST be identical to the methdo in Calendar entity."""
+        if (event := self.event) is None:
+            return None
+        #this must not be change
+        return {
+            "message": event.summary,
+            "all_day": event.all_day,
+            "start_time": event.start_datetime_local.strftime(DATE_STR_FORMAT),
+            "end_time": event.end_datetime_local.strftime(DATE_STR_FORMAT),
+            "location": event.location if event.location else "",
+            "description": event.description if event.description else "",
+        }
+
+    def _get_weekly_plans_for_attributes(self, weekplans: List[AulaWeeklyPlan], date: date) -> List[AulaDailyPlan]:
+        """
+        Calculate the start and end dates for the week and return a list of daily plans.
+
+        Returns:
+            List[AulaDailyPlan]: A list containing 7 AulaDailyPlan objects, one for each day of the week.
+        """
+        monday = date - timedelta(days=date.weekday())
+        sunday = monday + timedelta(days=6)
+        weeklydayplans: List[AulaDailyPlan] = [AulaDailyPlan(date=monday + timedelta(days=i), tasks=[]) for i in range(7)]
+        if weekplans:
+            for weekplan in weekplans:
+                if monday <= weekplan.from_date <= sunday:
+                    for dayplan in weekplan.daily_plans:
+                        weeklydayplans[dayplan.date.weekday()] = dayplan
+        return weeklydayplans
+
 
     @property
     def event(self) -> CalendarEvent | None:

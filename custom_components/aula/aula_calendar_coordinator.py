@@ -33,7 +33,9 @@ class AulaCalendarCoordinatorMeta[T]:
         self.keys = []
 
 DATA_UPDATE_INTERVAL = timedelta(hours=6)
-SYNC_EVENT_TIME = timedelta(days=14)
+SYNC_EVENT_MAX_TIME = timedelta(weeks=2)
+SYNC_EVENT_Min_TIME = timedelta()
+
 class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]):
     """My custom coordinator."""
     _weeklyplanmap: dict[int, List[AulaWeeklyPlan]]
@@ -184,7 +186,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
                 new_eventmap[id] = self._eventmap.get(id, list[AulaCalendarEvent]())
         for institution in request_data_institutions:
             #Batch fetching and then splitting events across profiles is very difficult, so we fetch per institution
-            events = self._client.get_calendar_events([institution], now(), now() + SYNC_EVENT_TIME)
+            events = self._client.get_calendar_events([institution], now(), now() + SYNC_EVENT_MAX_TIME)
             _LOGGER.debug(f"Fetching events for id: {institution.id}, got {len(events)} events")
             new_eventmap[institution.id] = events
         return (new_eventmap, [inst.id for inst in request_data_institutions])
@@ -231,7 +233,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
 
         for institution in request_data_institutions:
             #Batch fetching and then splitting weekly_plans across profiles is very difficult, so we fetch per institution
-            weekly_plans = self._client.get_weekly_plans([institution], now(), now() + SYNC_EVENT_TIME)
+            weekly_plans = self._client.get_weekly_plans([institution], now(), now() + SYNC_EVENT_MAX_TIME)
             _LOGGER.debug(f"Fetching weekly_plans for id: {institution.id}, got {len(weekly_plans)} weekly_plans")
             new_weeklyplanmap[institution.id] = weekly_plans
 

@@ -58,7 +58,51 @@
         "name": "Events {name} {institution}"
       },
       "weekly_plan": {
-        "name": "Weekly Plan {name} {institution}"
+        "name": "Weekly Plan {name} {institution}",
+        "state_attributes": {
+          "monday": {
+            "name": "Monday"
+          },
+          "tuesday": {
+            "name": "Tuesday"
+          },
+          "wednesday": {
+            "name": "Wednesday"
+          },
+          "thursday": {
+            "name": "Thursday"
+          },
+          "friday": {
+            "name": "Friday"
+          },
+          "saturday": {
+            "name": "Saturday"
+          },
+          "sunday": {
+            "name": "Sunday"
+          },
+          "next_monday": {
+            "name": "Next Monday"
+          },
+          "next_tuesday": {
+            "name": "Next Tuesday"
+          },
+          "next_wednesday": {
+            "name": "Next Wednesday"
+          },
+          "next_thursday": {
+            "name": "Next Thursday"
+          },
+          "next_friday": {
+            "name": "Next Friday"
+          },
+          "next_saturday": {
+            "name": "Next Saturday"
+          },
+          "next_sunday": {
+            "name": "Next Sunday"
+          }
+        }
       }
     },
     "sensor": {

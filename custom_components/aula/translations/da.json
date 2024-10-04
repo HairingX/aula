@@ -58,7 +58,51 @@
         "name": "Begivenheder {name} {institution}"
       },
       "weekly_plan": {
-        "name": "Ugeplan {name} {institution}"
+        "name": "Ugeplan {name} {institution}",
+        "state_attributes": {
+          "monday": {
+            "name": "Mandag"
+          },
+          "tuesday": {
+            "name": "Tirsdag"
+          },
+          "wednesday": {
+            "name": "Onsdag"
+          },
+          "thursday": {
+            "name": "Torsdag"
+          },
+          "friday": {
+            "name": "Fredag"
+          },
+          "saturday": {
+            "name": "Lørdag"
+          },
+          "sunday": {
+            "name": "Søndag"
+          },
+          "next_monday": {
+            "name": "Næste mandag"
+          },
+          "next_tuesday": {
+            "name": "Næste tirsdag"
+          },
+          "next_wednesday": {
+            "name": "Næste onsdag"
+          },
+          "next_thursday": {
+            "name": "Næste torsdag"
+          },
+          "next_friday": {
+            "name": "Næste fredag"
+          },
+          "next_saturday": {
+            "name": "Næste lørdag"
+          },
+          "next_sunday": {
+            "name": "Næste søndag"
+          }
+        }
       }
     },
     "sensor": {
