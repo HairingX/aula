@@ -1,6 +1,6 @@
-import logging
 from typing import Dict, List, Tuple, TypedDict
 import datetime
+import logging
 
 from .const import API_VERSION
 from .aula_proxy.module import (

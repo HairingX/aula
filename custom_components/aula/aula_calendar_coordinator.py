@@ -1,6 +1,7 @@
+from dataclasses import dataclass
 from datetime import timedelta
 import datetime
-from typing import Dict, List, TypeVar, TypedDict
+from typing import Dict, List, TypeVar
 from homeassistant.util.dt import now
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -18,7 +19,9 @@ from .aula_client import AulaClient
 from .aula_proxy.aula_errors import AulaCredentialError
 
 _LOGGER = logging.getLogger(__name__)
-class AulaCalendarCoordinatorData(TypedDict):
+
+@dataclass
+class AulaCalendarCoordinatorData:
     updated_events_for_listener_keys: List[int]
     updated_weekly_plans_for_listener_keys: List[int]
 
@@ -112,7 +115,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
     def _fetch_data(self, eventlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]], weekplanlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]) -> AulaCalendarCoordinatorData|Exception:
         try:
             logindata = self._client.login()
-            self.aula_version = logindata["api_version"]
+            self.aula_version = logindata.api_version
 
             new_eventmap, new_event_keys = self._fetch_events(eventlisteners)
             self._eventmap = new_eventmap
@@ -120,10 +123,10 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
             new_weeklyplanmap, new_weeklyplan_keys = self._fetch_weekly_plans(weekplanlisteners)
             self._weeklyplanmap = new_weeklyplanmap
 
-            data: AulaCalendarCoordinatorData = {
-                "updated_events_for_listener_keys": new_event_keys,
-                "updated_weekly_plans_for_listener_keys": new_weeklyplan_keys
-            }
+            data = AulaCalendarCoordinatorData(
+                updated_events_for_listener_keys = new_event_keys,
+                updated_weekly_plans_for_listener_keys = new_weeklyplan_keys
+            )
 
             for key in new_event_keys:
                 meta = eventlisteners.get(key)
@@ -148,13 +151,13 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         return await self.hass.async_add_executor_job(self._client.get_calendar_events, profiles, start_date, end_date)
 
     def get_events(self, profile: AulaInstitutionProfile) -> List[AulaCalendarEvent]:
-        key = profile["id"]
+        key = profile.id
         if key not in self._event_listeners:
             raise KeyError(f"Listener not found for the event key. Ensure you add the key when component is added to HASS (async_add_event_key), and remove when component is removed from HASS (async_remove_event_key)")
         return self._eventmap.get(key, [])
 
     async def async_add_event_key(self, profile: AulaInstitutionProfile) -> None:
-        id = profile["id"]
+        id = profile.id
         meta = self._event_listeners.setdefault(id, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]())
         _LOGGER.debug(f"async_add_event_key {id}")
         meta.keys.append(profile)
@@ -162,7 +165,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         await self.async_refresh()
 
     async def async_remove_event_key(self, profile: AulaInstitutionProfile) -> None:
-        id = profile["id"]
+        id = profile.id
         meta = self._event_listeners.get(id)
         if meta is None: return
         meta.keys.remove(profile)
@@ -182,9 +185,9 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         for institution in request_data_institutions:
             #Batch fetching and then splitting events across profiles is very difficult, so we fetch per institution
             events = self._client.get_calendar_events([institution], now(), now() + SYNC_EVENT_TIME)
-            _LOGGER.debug(f"Fetching events for id: {institution["id"]}, got {len(events)} events")
-            new_eventmap[institution["id"]] = events
-        return (new_eventmap, [inst["id"] for inst in request_data_institutions])
+            _LOGGER.debug(f"Fetching events for id: {institution.id}, got {len(events)} events")
+            new_eventmap[institution.id] = events
+        return (new_eventmap, [inst.id for inst in request_data_institutions])
 
     #endregion Events
 
@@ -194,13 +197,13 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         return await self.hass.async_add_executor_job(self._client.get_weekly_plans, profiles, start_datetime, end_datetime)
 
     def get_weekly_plans(self, profile: AulaChildProfile) -> List[AulaWeeklyPlan]:
-        key = profile["id"]
+        key = profile.id
         if key not in self._weekly_plan_listeners:
             raise KeyError(f"Listener not found for the weekly_plan key. Ensure you add the key when component is added to HASS (async_add_weekly_plan_key), and remove when component is removed from HASS (async_remove_weekly_plan_key)")
         return self._weeklyplanmap.get(key, [])
 
     async def async_add_weekly_plan_key(self, profile: AulaChildProfile) -> None:
-        id = profile["id"]
+        id = profile.id
         meta = self._weekly_plan_listeners.setdefault(id, AulaCalendarCoordinatorMeta[AulaChildProfile]())
         _LOGGER.debug(f"async_add_weekly_plan_key {id}")
         meta.keys.append(profile)
@@ -208,7 +211,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         await self.async_refresh()
 
     async def async_remove_weekly_plan_key(self, profile: AulaChildProfile) -> None:
-        id = profile["id"]
+        id = profile.id
         meta = self._weekly_plan_listeners.get(id)
         if meta is None: return
         meta.keys.remove(profile)
@@ -229,9 +232,9 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         for institution in request_data_institutions:
             #Batch fetching and then splitting weekly_plans across profiles is very difficult, so we fetch per institution
             weekly_plans = self._client.get_weekly_plans([institution], now(), now() + SYNC_EVENT_TIME)
-            _LOGGER.debug(f"Fetching weekly_plans for id: {institution["id"]}, got {len(weekly_plans)} weekly_plans")
-            new_weeklyplanmap[institution["id"]] = weekly_plans
+            _LOGGER.debug(f"Fetching weekly_plans for id: {institution.id}, got {len(weekly_plans)} weekly_plans")
+            new_weeklyplanmap[institution.id] = weekly_plans
 
-        return (new_weeklyplanmap, [inst["id"] for inst in request_data_institutions])
+        return (new_weeklyplanmap, [inst.id for inst in request_data_institutions])
 
     #endregion Weekly Plans

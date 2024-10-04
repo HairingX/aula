@@ -1,23 +1,26 @@
+from dataclasses import dataclass
 import datetime
-from typing import List, NotRequired, TypedDict
+from typing import List, Optional
 
-
-class AulaDailyPlanTask(TypedDict):
-    id: int
-    type: str
+@dataclass
+class AulaDailyPlanTask:
     author: str
-    group: str
-    pill: str
     content: str
-    editUrl: NotRequired[str|None]
+    group: str
+    id: int
+    pill: str
+    type: str
+    editUrl: Optional[str|None] = None
 
-class AulaDailyPlan(TypedDict):
+@dataclass
+class AulaDailyPlan:
     date: datetime.date
     tasks: List[AulaDailyPlanTask]
 
-class AulaWeeklyPlan(TypedDict):
+@dataclass
+class AulaWeeklyPlan:
     from_date: datetime.date
-    to_date: datetime.date
     name: str
+    to_date: datetime.date
     unilogin: str
     daily_plans: List[AulaDailyPlan]

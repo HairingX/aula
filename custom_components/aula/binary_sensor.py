@@ -26,10 +26,10 @@ class AulaUnreadMessageBinarySensor(AulaEntityBase[None], BinarySensorEntity): #
 
     def _set_values(self, data: AulaDataCoordinatorData, context:None) -> None:
         self._attr_is_on = False
-        threads = self.coordinator.data["message_threads"]
+        threads = self.coordinator.data.message_threads
         unread_thread: AulaMessageThread|None = None
         for thread in threads:
-            if not thread["read"]:
+            if not thread.read:
                 unread_thread = thread
 
         self._attr_is_on = unread_thread is not None
@@ -40,14 +40,14 @@ class AulaUnreadMessageBinarySensor(AulaEntityBase[None], BinarySensorEntity): #
         attributes["recipients"] = None
         attributes["text"] = None
         if unread_thread is not None:
-            attributes["subject"] = unread_thread["subject"]
-            attributes["recipients"] = ", ".join(rec["answer_directly_name"] for rec in unread_thread["recipients"])
-            if unread_thread["extra_recipients_count"] > 0:
-                attributes["recipients"] += f", +{unread_thread["extra_recipients_count"]}"
-            latestmsg = None if "latest_message" not in unread_thread else unread_thread["latest_message"]
+            attributes["subject"] = unread_thread.subject
+            attributes["recipients"] = ", ".join(rec.answer_directly_name for rec in unread_thread.recipients)
+            if unread_thread.extra_recipients_count > 0:
+                attributes["recipients"] += f", +{unread_thread.extra_recipients_count}"
+            latestmsg = unread_thread.latest_message
             if latestmsg is not None:
-                attributes["timestamp"] = None if "send_datetime" not in latestmsg else latestmsg["send_datetime"]
-                text = None if "text" not in latestmsg else latestmsg["text"]
-                html = None if text is None else text["html"]
+                attributes["timestamp"] = latestmsg.send_datetime
+                text = latestmsg.text
+                html = None if text is None else text.html
                 attributes["text"] = html
         self._attr_extra_state_attributes = attributes

@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from datetime import timedelta
-from typing import List, TypedDict
+from typing import List
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -17,14 +18,14 @@ from .aula_proxy.aula_errors import AulaCredentialError
 
 _LOGGER = logging.getLogger(__name__)
 
-class AulaDataCoordinatorData(TypedDict):
+@dataclass
+class AulaDataCoordinatorData:
     device_id: str
     aula_version: int
     profiles: List[AulaProfile]
     children: List[AulaChildProfile]
     daily_overviews: List[AulaDailyOverview]
     message_threads: List[AulaMessageThread]
-    # calendar_events: List[AulaCalendarEvent]
 
 class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
     """My custom coordinator."""
@@ -102,20 +103,20 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
     def _fetch_data(self) -> AulaDataCoordinatorData|Exception:
         try:
             logindata = self._client.login()
-            profiles = logindata["profiles"]
-            self.aula_version = logindata["api_version"]
+            profiles = logindata.profiles
+            self.aula_version = logindata.api_version
             daily_overviews = self._client.get_daily_overviews(profiles)
             message_threads = self._client.get_message_threads(profiles)
-            data: AulaDataCoordinatorData = {
-                "device_id": self.device_id,
-                "aula_version": self.aula_version,
-                "profiles": profiles,
-                "children": [child for profile in profiles for child in profile["children"]],
-                "daily_overviews": daily_overviews,
-                "message_threads": message_threads
-            }
+            data = AulaDataCoordinatorData(
+                device_id = self.device_id,
+                aula_version = self.aula_version,
+                profiles = profiles,
+                children = [child for profile in profiles for child in profile.children],
+                daily_overviews = daily_overviews,
+                message_threads = message_threads
+            )
         except Exception as ex:
             _LOGGER.error(ex)
             return ex
-        # _LOGGER.debug(f"Coordinator fetched data: {data}")
+        # _LOGGER.debug(f"Coordinator fetched data: {data)")
         return data

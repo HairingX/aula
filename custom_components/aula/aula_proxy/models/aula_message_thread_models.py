@@ -1,53 +1,58 @@
+from dataclasses import dataclass
 import datetime
-from typing import Any, List, NotRequired, TypedDict
+from typing import Any, List, Optional
 
 from .aula_profile_models import AulaProfilePicture
 
-class AulaThreadRecipient(TypedDict):
+@dataclass
+class AulaThreadRecipient:
     answer_directly_name: str
     full_name: str
     metadata: str
 
-class AulaMessageText(TypedDict):
+@dataclass
+class AulaMessageText:
     html: str
 
-class AulaMessage(TypedDict):
+@dataclass
+class AulaMessage:
     id: str
     message_type: str
     send_datetime: datetime.datetime
-    text: NotRequired[AulaMessageText|None]
-    deleted_at: NotRequired[datetime.datetime|None]
-    has_attachments: NotRequired[bool|None]
-    pending_media: NotRequired[bool|None]
-    leaver_names: NotRequired[str|None]
-    inviter_name: NotRequired[str|None]
-    sender: NotRequired[AulaThreadRecipient|None]
-    new_recipients: NotRequired[List[AulaThreadRecipient]|None]
-    original_recipients: NotRequired[List[AulaThreadRecipient]|None]
-    recipients: NotRequired[List[AulaThreadRecipient]|None]
-    attachments: NotRequired[List[Any]|None]
-    can_reply_to_message: NotRequired[bool|None]
+    attachments: Optional[List[Any]|None] = None
+    can_reply_to_message: Optional[bool|None] = None
+    deleted_at: Optional[datetime.datetime|None] = None
+    has_attachments: Optional[bool|None] = None
+    inviter_name: Optional[str|None] = None
+    leaver_names: Optional[str|None] = None
+    new_recipients: Optional[List[AulaThreadRecipient]|None] = None
+    original_recipients: Optional[List[AulaThreadRecipient]|None] = None
+    pending_media: Optional[bool|None] = None
+    recipients: Optional[List[AulaThreadRecipient]|None] = None
+    sender: Optional[AulaThreadRecipient|None] = None
+    text: Optional[AulaMessageText|None] = None
 
-class AulaMessagePreview(TypedDict):
+@dataclass
+class AulaMessagePreview:
     id: str
     send_datetime: datetime.datetime
-    text: NotRequired[AulaMessageText|None]
+    text: Optional[AulaMessageText|None] = None
 
-class AulaThreadRegardingChild(TypedDict):
+@dataclass
+class AulaThreadRegardingChild:
     display_name: str
     profile_id: int
-    profile_picture: NotRequired[AulaProfilePicture|None]
     short_name: str
+    profile_picture: Optional[AulaProfilePicture|None] = None
 
-class AulaMessageThread(TypedDict):
-    creator: NotRequired[AulaThreadRecipient|None]
+@dataclass
+class AulaMessageThread:
     extra_recipients_count: int
     id: int
     institution_code: str
     is_archived: bool
     is_thread_or_subscription_deleted: bool
     last_read_message_id: str
-    latest_message: NotRequired[AulaMessagePreview|None]
     marked: bool
     muted: bool
     read: bool
@@ -56,8 +61,9 @@ class AulaMessageThread(TypedDict):
     sensitive: bool
     started_time: datetime.datetime
     subject: str
-    subscription_id: NotRequired[int|None]
-    subscription_type: NotRequired[str|None]
-
-    leave_time: NotRequired[datetime.datetime|None]
-    number_of_bundle_items: NotRequired[int|None]
+    creator: Optional[AulaThreadRecipient|None] = None
+    latest_message: Optional[AulaMessagePreview|None] = None
+    leave_time: Optional[datetime.datetime|None] = None
+    number_of_bundle_items: Optional[int|None] = None
+    subscription_id: Optional[int|None] = None
+    subscription_type: Optional[str|None] = None

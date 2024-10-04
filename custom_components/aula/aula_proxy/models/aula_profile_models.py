@@ -1,21 +1,23 @@
-import datetime
-from typing import List, NotRequired, TypedDict
-
-class AulaProfileAddress(TypedDict):
+from dataclasses import dataclass
+from datetime import datetime, time
+from typing import List, Optional
+@dataclass
+class AulaProfileAddress:
     id: int
+    postal_code: Optional[int|None] = None
+    postal_district: Optional[str|None] = None
+    street: Optional[str|None] = None
 
-    postal_code: NotRequired[int|None]
-    postal_district: NotRequired[str|None]
-    street: NotRequired[str|None]
-
-class AulaProfilePicture(TypedDict):
+@dataclass
+class AulaProfilePicture:
     id: int
-    bucket: NotRequired[str|None]
-    is_image_scaling_pending: NotRequired[bool|None]
-    key: NotRequired[str|None]
-    url: NotRequired[str|None]
+    bucket: Optional[str|None] = None
+    is_image_scaling_pending: Optional[bool|None] = None
+    key: Optional[str|None] = None
+    url: Optional[str|None] = None
 
-class AulaInstitutionProfile(TypedDict):
+@dataclass
+class AulaInstitutionProfile:
     first_name: str
     full_name: str
     gender: str
@@ -25,152 +27,152 @@ class AulaInstitutionProfile(TypedDict):
     is_primary: bool
     last_name: str
     short_name: str
+    access_level: Optional[str|None] = None
+    address: Optional[AulaProfileAddress|None] = None
+    alias: Optional[bool|None] = None
+    aula_email: Optional[str|None] = None
+    birthday: Optional[str|None] = None
+    communication_blocked: Optional[bool|None] = None
+    contact_type: Optional[str|None] = None
+    current_user_can_delete_profile_picture: Optional[bool|None] = None
+    current_user_can_edit_contact_information: Optional[bool|None] = None
+    current_user_can_edit_profile_description: Optional[bool|None] = None
+    current_user_can_edit_profile_picture: Optional[bool|None] = None
+    current_user_can_see_profile_description: Optional[bool|None] = None
+    current_user_can_view_contact_information: Optional[bool|None] = None
+    deactivated: Optional[bool|None] = None
+    email: Optional[str|None] = None
+    groups: Optional[str|None] = None
+    has_blocked_communication_channels: Optional[bool|None] = None
+    has_custody: Optional[bool|None] = None
+    home_phone_number: Optional[str|None] = None
+    institution_profile_descriptions: Optional[str|None] = None
+    institution_role: Optional[str|None] = None
+    institution_type: Optional[str|None] = None
+    is_internal_profile_picture: Optional[bool|None] = None
+    last_activity: Optional[str|None] = None
+    main_group: Optional[str|None] = None
+    metadata: Optional[str|None] = None
+    mobile_phone_number: Optional[str|None] = None
+    municipality_code: Optional[str|None] = None
+    municipality_name: Optional[str|None] = None
+    new_institution_profile: Optional[bool|None] = None
+    profile_picture_url: Optional[str|None] = None
+    profile_picture: Optional[AulaProfilePicture|None] = None
+    profile_status: Optional[str|None] = None
+    relation: Optional[str|None] = None
+    role: Optional[str|None] = None
+    should_show_decline_consent_two_warning: Optional[bool|None] = None
+    user_has_given_consent_to_show_contact_information: Optional[bool|None] = None
+    work_phone_number: Optional[str|None] = None
 
-    access_level: NotRequired[str|None]
-    address: NotRequired[AulaProfileAddress|None]
-    alias: NotRequired[bool|None]
-    aula_email: NotRequired[str|None]
-    birthday: NotRequired[str|None]
-    communication_blocked: NotRequired[bool|None]
-    contact_type: NotRequired[str|None]
-    current_user_can_delete_profile_picture: NotRequired[bool|None]
-    current_user_can_edit_contact_information: NotRequired[bool|None]
-    current_user_can_edit_profile_description: NotRequired[bool|None]
-    current_user_can_edit_profile_picture: NotRequired[bool|None]
-    current_user_can_see_profile_description: NotRequired[bool|None]
-    current_user_can_view_contact_information: NotRequired[bool|None]
-    deactivated: NotRequired[bool|None]
-    email: NotRequired[str|None]
-    groups: NotRequired[str|None]
-    has_blocked_communication_channels: NotRequired[bool|None]
-    has_custody: NotRequired[bool|None]
-    home_phone_number: NotRequired[str|None]
-    institution_profile_descriptions: NotRequired[str|None]
-    institution_role: NotRequired[str|None]
-    institution_type: NotRequired[str|None]
-    is_internal_profile_picture: NotRequired[bool|None]
-    last_activity: NotRequired[str|None]
-    main_group: NotRequired[str|None]
-    metadata: NotRequired[str|None]
-    mobile_phone_number: NotRequired[str|None]
-    municipality_code: NotRequired[str|None]
-    municipality_name: NotRequired[str|None]
-    new_institution_profile: NotRequired[bool|None]
-    profile_picture_url: NotRequired[str|None]
-    profile_picture: NotRequired[AulaProfilePicture|None]
-    profile_status: NotRequired[str|None]
-    relation: NotRequired[str|None]
-    role: NotRequired[str|None]
-    should_show_decline_consent_two_warning: NotRequired[bool|None]
-    user_has_given_consent_to_show_contact_information: NotRequired[bool|None]
-    work_phone_number: NotRequired[str|None]
-
-class AulaChildProfile(TypedDict):
+@dataclass
+class AulaChildProfile:
+    first_name: str
     id: int
     institution_code: str
     institution_profile: AulaInstitutionProfile
-    first_name: str
     name: str
     profile_id: int
     short_name: str
     user_id: str
+    has_custody_or_extended_access: Optional[bool|None] = None
+    profile_picture: Optional[AulaProfilePicture|None] = None
 
-    has_custody_or_extended_access: NotRequired[bool|None]
-    profile_picture: NotRequired[AulaProfilePicture|None]
-
-class AulaProfile(TypedDict):
-    profile_id: int
-    first_name: str
-    name: str
+@dataclass
+class AulaProfile:
     children: List[AulaChildProfile]
+    first_name: str
     institution_profiles: List[AulaInstitutionProfile]
+    name: str
+    profile_id: int
+    user_id: str
+    age_18_and_older: Optional[bool|None] = None
+    contact_info_editable: Optional[bool|None] = None
+    is_latest_data_policy_accepted: Optional[bool|None] = None
+    over_consent_age: Optional[bool|None] = None
+    portal_role: Optional[str|None] = None
+    support_role: Optional[bool|None] = None
 
-    user_id: NotRequired[str|None]
-    age_18_and_older: NotRequired[bool|None]
-    contact_info_editable: NotRequired[bool|None]
-    is_latest_data_policy_accepted: NotRequired[bool|None]
-    over_consent_age: NotRequired[bool|None]
-    portal_role: NotRequired[str|None]
-    support_role: NotRequired[bool|None]
-
-class AulaToken(TypedDict):
-    # token: str
+@dataclass
+class AulaToken:
     bearer_token: str
-    timestamp: datetime.datetime
+    timestamp: datetime
 
-class AulaWidget(TypedDict):
+@dataclass
+class AulaWidget:
     id: int
     name: str
     widget_id: str
-    can_access_on_mobile: NotRequired[bool|None]
-    can_be_placed_inside_module: NotRequired[bool|None]
-    can_be_placed_on_full_page: NotRequired[bool|None]
-    can_be_placed_on_group: NotRequired[bool|None]
-    description: NotRequired[str|None]
-    icon_employee: NotRequired[str|None]
-    icon_hover: NotRequired[str|None]
-    is_pilot: NotRequired[bool|None]
-    is_secure: NotRequired[bool|None]
-    supports_test_mode: NotRequired[bool|None]
-    type: NotRequired[str|None]
-    url: NotRequired[str|None]
-    widget_supplier: NotRequired[str|None]
-    widget_version: NotRequired[str|None]
+    can_access_on_mobile: Optional[bool|None] = None
+    can_be_placed_inside_module: Optional[bool|None] = None
+    can_be_placed_on_full_page: Optional[bool|None] = None
+    can_be_placed_on_group: Optional[bool|None] = None
+    description: Optional[str|None] = None
+    icon_employee: Optional[str|None] = None
+    icon_hover: Optional[str|None] = None
+    is_pilot: Optional[bool|None] = None
+    is_secure: Optional[bool|None] = None
+    supports_test_mode: Optional[bool|None] = None
+    type: Optional[str|None] = None
+    url: Optional[str|None] = None
+    widget_supplier: Optional[str|None] = None
+    widget_version: Optional[str|None] = None
 
-class AulaLocation(TypedDict):
-    id: int
-    name: str
+@dataclass
+class AulaLocation:
     description: str
-
-    end_date: NotRequired[datetime.date|None]
-    end_time: NotRequired[datetime.time|None]
-    icon: NotRequired[str|None]
-    is_date_intervals_enabled: NotRequired[bool|None]
-    is_deactivated: NotRequired[bool|None]
-    is_time_intervals_enabled: NotRequired[bool|None]
-    is_weekdays_enabled: NotRequired[bool|None]
-    start_date: NotRequired[datetime.date|None]
-    start_time: NotRequired[datetime.time|None]
-    week_day_mask: NotRequired[str|None]
-
-class AulaGroup(TypedDict):
     id: int
     name: str
-    short_name: str
+    end_datetime: Optional[datetime|None] = None
+    icon: Optional[str|None] = None
+    is_date_intervals_enabled: Optional[bool|None] = None
+    is_deactivated: Optional[bool|None] = None
+    is_time_intervals_enabled: Optional[bool|None] = None
+    is_weekdays_enabled: Optional[bool|None] = None
+    start_datetime: Optional[datetime|None] = None
+    week_day_mask: Optional[str|None] = None
+
+@dataclass
+class AulaGroup:
+    id: int
     institution_code: str
     institution_name: str
+    name: str
+    short_name: str
     uni_group_type: str
-    main_group: NotRequired[bool|None]
-    is_deactivated: NotRequired[bool|None]
-    allow_members_to_be_shown: NotRequired[bool|None]
+    allow_members_to_be_shown: Optional[bool|None] = None
+    is_deactivated: Optional[bool|None] = None
+    main_group: Optional[bool|None] = None
 
-class AulaDailyOverview(TypedDict):
+@dataclass
+class AulaDailyOverview:
     id: int
     institution_profile: AulaInstitutionProfile
     status: int
+    check_in_time_expected: Optional[time|None] = None
+    check_in_time: Optional[time|None] = None
+    check_out_time_expected: Optional[time|None] = None
+    check_out_time: Optional[time|None] = None
+    comment: Optional[str|None] = None
+    exit_with: Optional[str|None] = None
+    is_default_check_in_time_expected: Optional[bool|None] = None
+    is_default_check_out_time_expected: Optional[bool|None] = None
+    is_planned_times_outside_opening_hours: Optional[bool|None] = None
+    location: Optional[AulaLocation|None] = None
+    main_group: Optional[AulaGroup|None] = None
+    self_decider_end_time: Optional[time|None] = None
+    self_decider_start_time: Optional[time|None] = None
+    spare_time_activity: Optional[str|None] = None
     # activity_type: int
     # '''Unsure of the data type in this, need more info to support it wholefully. Always appear to be 0'''
-
-    check_in_time: NotRequired[datetime.time|None]
-    check_out_time: NotRequired[datetime.time|None]
-    comment: NotRequired[str|None]
-    check_in_time_expected: NotRequired[datetime.time|None]
-    check_out_time_expected: NotRequired[datetime.time|None]
-    exit_with: NotRequired[str|None]
-    is_default_check_in_time_expected: NotRequired[bool|None]
-    is_default_check_out_time_expected: NotRequired[bool|None]
-    is_planned_times_outside_opening_hours: NotRequired[bool|None]
-    location: NotRequired[AulaLocation|None]
-    main_group: NotRequired[AulaGroup|None]
-    self_decider_end_time: NotRequired[datetime.time|None]
-    self_decider_start_time: NotRequired[datetime.time|None]
-    spare_time_activity: NotRequired[str|None]
-    # editable_presence_states: NotRequired[List[Any]|None]
+    # editable_presence_states: Optional[List[Any]|None]
     # '''Unsure of the data type in this, need more info to support it wholefully. Always appear empty'''
-    # sleep_intervals: NotRequired[List[Any]|None]
+    # sleep_intervals: Optional[List[Any]|None]
     # '''Unsure of the data type in this, need more info to support it wholefully. Always appear empty'''
 
-class AulaLoginData(TypedDict):
+@dataclass
+class AulaLoginData:
+    api_version: int
     profiles: List[AulaProfile]
     widgets: List[AulaWidget]
-    api_version: int

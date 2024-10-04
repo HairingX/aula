@@ -1,77 +1,86 @@
-import datetime
-from typing import Any, List, NotRequired, TypedDict
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, List, Optional
 
 from .aula_profile_models import AulaGroup
 
-class AulaCalendarEventTimeSlotEntryIndex(TypedDict):
-    start_datetime: datetime.datetime
-    end_datetime: datetime.datetime
+@dataclass
+class AulaCalendarEventTimeSlotEntryIndex:
+    end_datetime: datetime
+    start_datetime: datetime
 
-class AulaCalendarEventTimeSlotEntryAnswer(TypedDict):
+@dataclass
+class AulaCalendarEventTimeSlotEntryAnswer:
     concerning_profile_id: int
     id: int
     inst_profile_id: int
     selected_time_slot_index: int
 
-class AulaCalendarEventTimeSlotEntry(TypedDict):
+@dataclass
+class AulaCalendarEventTimeSlotEntry:
     answers: List[AulaCalendarEventTimeSlotEntryAnswer]
-    belongs_to_resource: NotRequired[Any]
-    end_date: datetime.datetime
+    end_date: datetime
     id: int
-    start_date: datetime.datetime
+    start_date: datetime
     time_slot_indexes: List[AulaCalendarEventTimeSlotEntryIndex]
+    belongs_to_resource: Optional[Any] = None
 
-class AulaCalendarEventTimeSlot(TypedDict):
+@dataclass
+class AulaCalendarEventTimeSlot:
     child_required: bool
     """This property is not used in Aula website 2024, they use the CalendarEvent.belongs_to_profiles and check if the kids institutionid is in that"""
     time_slots: List[AulaCalendarEventTimeSlotEntry]
 
-class AulaCalendarEventLessonParticipant(TypedDict):
+@dataclass
+class AulaCalendarEventLessonParticipant:
     participant_role: str
     teacher_id: int
     teacher_initials: str
     teacher_name: str
 
-class AulaCalendarEventLesson(TypedDict):
+@dataclass
+class AulaCalendarEventLesson:
     has_relevant_note: bool
     lesson_id: str
     lesson_status: str
     participants: List[AulaCalendarEventLessonParticipant]
 
-class AulaCalendarEventResource(TypedDict):
+@dataclass
+class AulaCalendarEventResource:
     id: int
     name: str
 
-class AulaCalendarEvent(TypedDict):
+@dataclass
+class AulaCalendarEvent:
     added_to_institution_calendar: bool
     additional_resources: List[AulaCalendarEventResource]
-    additional_resource_text: NotRequired[str|None]
     all_day: bool
     belongs_to_profiles: List[int]
     belongs_to_resources: List[Any]
-    created_datetime: datetime.datetime
-    creator_inst_profile_id: NotRequired[int|None]
-    creator_profile_id: NotRequired[int|None]
+    created_datetime: datetime
     directly_related: bool
-    end_datetime: datetime.datetime
+    end_datetime: datetime
     has_attachments: bool
     id: int
-    institution_code: NotRequired[str|None]
-    institution_name: NotRequired[str|None]
-    invited_groups: List[AulaGroup]
-    lesson: NotRequired[AulaCalendarEventLesson|None]
-    old_all_day: NotRequired[bool|None]
-    old_end_datetime: NotRequired[datetime.datetime|None]
-    old_start_datetime: NotRequired[datetime.datetime|None]
-    primary_resource: NotRequired[AulaCalendarEventResource|None]
-    primary_resource_text: NotRequired[str|None]
     private: bool
-    repeating: NotRequired[bool|None]
+    invited_groups: List[AulaGroup]
     requires_new_answer: bool
-    response_deadline: NotRequired[datetime.datetime|None]
     response_required: bool
-    response_status: NotRequired[str|None]
-    start_datetime: datetime.datetime
-    time_slot: NotRequired[AulaCalendarEventTimeSlot|None]
+    start_datetime: datetime
     title: str
     type: str
+    additional_resource_text: Optional[str|None] = None
+    creator_inst_profile_id: Optional[int|None] = None
+    creator_profile_id: Optional[int|None] = None
+    institution_code: Optional[str|None] = None
+    institution_name: Optional[str|None] = None
+    lesson: Optional[AulaCalendarEventLesson|None] = None
+    old_all_day: Optional[bool|None] = None
+    old_end_datetime: Optional[datetime|None] = None
+    old_start_datetime: Optional[datetime|None] = None
+    primary_resource_text: Optional[str|None] = None
+    primary_resource: Optional[AulaCalendarEventResource|None] = None
+    repeating: Optional[bool|None] = None
+    response_deadline: Optional[datetime|None] = None
+    response_status: Optional[str|None] = None
+    time_slot: Optional[AulaCalendarEventTimeSlot|None] = None
