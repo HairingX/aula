@@ -35,6 +35,34 @@
   },
   "entity": {
     "binary_sensor": {
+      "unread_calendar": {
+        "name": "Unread Calendar",
+        "state_attributes": {
+          "all_day": {
+            "name": "All Day"
+          },
+          "end_datetime": {
+            "name": "End"
+          },
+          "start_datetime": {
+            "name": "Start"
+          },
+          "title": {
+            "name": "Title"
+          },
+          "total": {
+            "name": "Total"
+          }
+        }
+      },
+      "unread_gallery": {
+        "name": "Unread Gallery",
+        "state_attributes": {
+          "total": {
+            "name": "Total"
+          }
+        }
+      },
       "unread_message": {
         "name": "Unread Message",
         "state_attributes": {
@@ -49,6 +77,9 @@
           },
           "timestamp": {
             "name": "Timestamp"
+          },
+          "total": {
+            "name": "Total"
           }
         }
       }
@@ -60,29 +91,26 @@
       "weekly_plan": {
         "name": "Weekly Plan {name} {institution}",
         "state_attributes": {
-          "monday": {
-            "name": "Monday"
-          },
-          "tuesday": {
-            "name": "Tuesday"
-          },
-          "wednesday": {
-            "name": "Wednesday"
-          },
-          "thursday": {
-            "name": "Thursday"
-          },
           "friday": {
             "name": "Friday"
           },
-          "saturday": {
-            "name": "Saturday"
+          "monday": {
+            "name": "Monday"
           },
-          "sunday": {
-            "name": "Sunday"
+          "next_friday": {
+            "name": "Next Friday"
           },
           "next_monday": {
             "name": "Next Monday"
+          },
+          "next_saturday": {
+            "name": "Next Saturday"
+          },
+          "next_sunday": {
+            "name": "Next Sunday"
+          },
+          "next_thursday": {
+            "name": "Next Thursday"
           },
           "next_tuesday": {
             "name": "Next Tuesday"
@@ -90,17 +118,20 @@
           "next_wednesday": {
             "name": "Next Wednesday"
           },
-          "next_thursday": {
-            "name": "Next Thursday"
+          "saturday": {
+            "name": "Saturday"
           },
-          "next_friday": {
-            "name": "Next Friday"
+          "sunday": {
+            "name": "Sunday"
           },
-          "next_saturday": {
-            "name": "Next Saturday"
+          "thursday": {
+            "name": "Thursday"
           },
-          "next_sunday": {
-            "name": "Next Sunday"
+          "tuesday": {
+            "name": "Tuesday"
+          },
+          "wednesday": {
+            "name": "Wednesday"
           }
         }
       }

@@ -1,9 +1,11 @@
 from typing import Any, Dict, List
 from datetime import datetime, timedelta
 
-from ..responses.get_daily_overview_response import AulaDailyOverviewData, AulaDailyOverviewInstitutionProfileData, AulaDailyOverviewLocationData, AulaDailyOverviewMainGroupData, AulaDailyOverviewProfilePictureData
-from ..responses.get_profile_context_response import AulaProfileContextWidgetData
+from ..responses.common_data import AulaProfilePictureData
+from ..responses.get_daily_overview_response import *
+from ..responses.get_profile_context_response import *
 from ..utils.list_utils import list_without_none
+
 from .aula_parser import AulaParser
 from .aula_profile_models import AulaDailyOverview, AulaGroup, AulaLocation, AulaWidget, AulaChildProfile, AulaInstitutionProfile, AulaProfile, AulaProfileAddress, AulaProfilePicture
 
@@ -35,7 +37,7 @@ class AulaProfileParser(AulaParser):
         return list_without_none(map(AulaProfileParser.parse_profile, data))
 
     @staticmethod
-    def parse_picture(data: AulaDailyOverviewProfilePictureData | None) -> AulaProfilePicture | None:
+    def parse_picture(data: AulaProfilePictureData | None) -> AulaProfilePicture | None:
         if not data: return None
         result = AulaProfilePicture(
             bucket = AulaProfileParser._parse_nullable_str(data.get("bucket")),
@@ -253,3 +255,8 @@ class AulaProfileParser(AulaParser):
     def parse_daily_overviews(data: List[AulaDailyOverviewData] | None) -> List[AulaDailyOverview]:
         if data is None: return []
         return list_without_none(map(AulaProfileParser.parse_daily_overview, data))
+
+    @staticmethod
+    def parse_daily_overview_response(data: AulaGetDailyOverviewResponse | None) -> List[AulaDailyOverview]:
+        if data is None: return []
+        return AulaProfileParser.parse_daily_overviews(data["data"])

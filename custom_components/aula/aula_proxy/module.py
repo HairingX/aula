@@ -27,6 +27,11 @@ from .models.module import (
     AulaWeeklyPlan,
     AulaDailyPlan,
     AulaDailyPlanTask,
+    AulaAlbumNotification,
+    AulaCalendarEventNotification,
+    AulaGalleryNotification,
+    AulaMessageNotification,
+    AULA_NOTIFICATION_TYPES
 )
 
 from .aula_proxy_client import AulaProxyClient
@@ -67,4 +72,9 @@ __all__ = [
     'AulaDailyPlanTask',
 
     'AulaProxyClient',
+    'AulaAlbumNotification',
+    'AulaCalendarEventNotification',
+    'AulaGalleryNotification',
+    'AulaMessageNotification',
+    'AULA_NOTIFICATION_TYPES',
 ]

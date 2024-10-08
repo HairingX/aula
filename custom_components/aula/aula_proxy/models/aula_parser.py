@@ -1,6 +1,6 @@
 import datetime
 import re
-from typing import Any, TypeVar
+from typing import Any, List, TypeVar
 from homeassistant.util.dt import now
 
 class AulaParser:
@@ -66,6 +66,13 @@ class AulaParser:
         if value is None: return -1
         if isinstance(value, int): return value
         return int(value)
+
+    @staticmethod
+    def _parse_int_list(value: Any) -> List[int]:
+        if value and isinstance(value, list):
+            if isinstance(value[0], int):
+                return [int(val) for val in value] # type: ignore
+        return list[int]()
 
     @staticmethod
     def _parse_nullable_int(value: Any) -> int | None:

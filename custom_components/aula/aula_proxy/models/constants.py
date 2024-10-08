@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 
-class AULA_WIDGET_ID(StrEnum):
+class AulaWidgetId(StrEnum):
     EASYIQ_WEEKPLAN = "0001"
     """0001 - Week plan posted on easyiqcloud.dk/api/aula."""
     # MEEBOOK_PARENTS = "0003"
@@ -24,7 +24,7 @@ class AULA_WIDGET_ID(StrEnum):
     # """0119 - Notifications from Meebook for parents in Aula. The widget also contains quicklinks for navigation to Meebook from Aula."""
 
 
-class AULA_CALENDAR_EVENT_TYPE(StrEnum):
+class AulaCalendarEventType(StrEnum):
     EVENT = 'event'
     LESSON = 'lesson'
     HOLIDAY = 'holiday'

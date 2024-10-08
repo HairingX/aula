@@ -35,6 +35,34 @@
   },
   "entity": {
     "binary_sensor": {
+      "unread_calendar": {
+        "name": "Ulæst Kalender",
+        "state_attributes": {
+          "all_day": {
+            "name": "Heldag"
+          },
+          "end_datetime": {
+            "name": "Slut"
+          },
+          "start_datetime": {
+            "name": "Start"
+          },
+          "title": {
+            "name": "Titel"
+          },
+          "total": {
+            "name": "Total"
+          }
+        }
+      },
+      "unread_gallery": {
+        "name": "Ulæst Galleri",
+        "state_attributes": {
+          "total": {
+            "name": "Total"
+          }
+        }
+      },
       "unread_message": {
         "name": "Ulæst Besked",
         "state_attributes": {
@@ -49,6 +77,9 @@
           },
           "timestamp": {
             "name": "Tidsstempel"
+          },
+          "total": {
+            "name": "Total"
           }
         }
       }
@@ -60,29 +91,26 @@
       "weekly_plan": {
         "name": "Ugeplan {name} {institution}",
         "state_attributes": {
-          "monday": {
-            "name": "Mandag"
-          },
-          "tuesday": {
-            "name": "Tirsdag"
-          },
-          "wednesday": {
-            "name": "Onsdag"
-          },
-          "thursday": {
-            "name": "Torsdag"
-          },
           "friday": {
             "name": "Fredag"
           },
-          "saturday": {
-            "name": "Lørdag"
+          "monday": {
+            "name": "Mandag"
           },
-          "sunday": {
-            "name": "Søndag"
+          "next_friday": {
+            "name": "Næste fredag"
           },
           "next_monday": {
             "name": "Næste mandag"
+          },
+          "next_saturday": {
+            "name": "Næste lørdag"
+          },
+          "next_sunday": {
+            "name": "Næste søndag"
+          },
+          "next_thursday": {
+            "name": "Næste torsdag"
           },
           "next_tuesday": {
             "name": "Næste tirsdag"
@@ -90,17 +118,20 @@
           "next_wednesday": {
             "name": "Næste onsdag"
           },
-          "next_thursday": {
-            "name": "Næste torsdag"
+          "saturday": {
+            "name": "Lørdag"
           },
-          "next_friday": {
-            "name": "Næste fredag"
+          "sunday": {
+            "name": "Søndag"
           },
-          "next_saturday": {
-            "name": "Næste lørdag"
+          "thursday": {
+            "name": "Torsdag"
           },
-          "next_sunday": {
-            "name": "Næste søndag"
+          "tuesday": {
+            "name": "Tirsdag"
+          },
+          "wednesday": {
+            "name": "Onsdag"
           }
         }
       }

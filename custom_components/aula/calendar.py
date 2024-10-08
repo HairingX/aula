@@ -7,13 +7,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util.dt import now
-from typing import Any, List, final
+from typing import Any, Dict, List, final
 import logging
 
 from .aula_calendar_coordinator import AulaCalendarCoordinator, AulaCalendarCoordinatorData
 from .aula_data import get_aula_calendar_coordinator, get_aula_data_coordinator
 from .aula_data_coordinator import AulaDataCoordinator
-from .aula_proxy.models.constants import AULA_CALENDAR_EVENT_TYPE
+from .aula_proxy.models.constants import AulaCalendarEventType
 from .aula_proxy.utils.list_utils import list_without_none
 from .aula_proxy.models.module import (
     AulaChildProfile,
@@ -90,7 +90,7 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
         """Return True if the event is visible."""
         if self._profile_is_child:
             # following meetings can be without kids, leave them out of the kids calendar
-            if event.type == AULA_CALENDAR_EVENT_TYPE.SCHOOL_HOME_MEETING or event.type == AULA_CALENDAR_EVENT_TYPE.PARENTAL_MEETING:
+            if event.type == AulaCalendarEventType.SCHOOL_HOME_MEETING or event.type == AulaCalendarEventType.PARENTAL_MEETING:
                 return len(self._get_required_children(event)) > 0
         return True
 
@@ -124,7 +124,7 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
             location = event.primary_resource.name
 
         # meetings have timeslots parents book into. The meeting runs over many days, but we only want to display it for the duration booked, once the booking has been done.
-        if event.type == AULA_CALENDAR_EVENT_TYPE.SCHOOL_HOME_MEETING or event.type == AULA_CALENDAR_EVENT_TYPE.PARENTAL_MEETING:
+        if event.type == AulaCalendarEventType.SCHOOL_HOME_MEETING or event.type == AulaCalendarEventType.PARENTAL_MEETING:
             required_children = self._get_required_children(event)
             id = self._institution.id
             unbooked_meeting = True
@@ -202,7 +202,7 @@ class AulaWeekPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: igno
 
     @final
     @property
-    def state_attributes(self) -> dict[str, Any] | None: # type: ignore
+    def state_attributes(self) -> Dict[str, Any] | None: # type: ignore
         """Return the entity state attributes."""
         attributes = self._CALENDAR_ENTITY_STATE_ATTRIBUTES()
         if attributes is not None:
@@ -225,7 +225,7 @@ class AulaWeekPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: igno
             attributes["next_sunday"] = weeklydayplans[6]
         return attributes
 
-    def _CALENDAR_ENTITY_STATE_ATTRIBUTES(self) -> dict[str, Any] | None:
+    def _CALENDAR_ENTITY_STATE_ATTRIBUTES(self) -> Dict[str, Any] | None:
         """MUST be identical to the methdo in Calendar entity."""
         if (event := self.event) is None:
             return None

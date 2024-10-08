@@ -1,7 +1,7 @@
 import calendar
 from bs4 import BeautifulSoup
 from http import HTTPStatus
-from requests import Session
+from requests import Response, Session
 from typing import Any, Dict, Iterable, List
 from datetime import datetime, timedelta, date
 import json, re
@@ -9,15 +9,18 @@ import logging
 import pytz
 import requests
 
-from .responses.get_weekly_plans_response import GetWeeklyPlansResponse
-from .responses.get_daily_overview_response import AulaGetDailyOverviewResponse
-from .responses.get_profile_context_response import AulaGetProfileContextResponse
 from .aula_errors import ParseError, AulaCredentialError
-# from .models.aula_notication_models import AULA_NOTIFICATION_TYPES
+from .models.aula_notification_parser import AulaNotificationParser
 from .models.aula_profile_parser import AulaProfileParser
 from .models.aula_weekly_plan_parser import AulaWeeklyPlanParser
-from .models.constants import AULA_WIDGET_ID
+from .models.constants import AulaWidgetId
 from .models.module import *
+from .responses.get_daily_overview_response import AulaGetDailyOverviewResponse
+from .responses.get_messages_for_thread_response import AulaGetMessagesForThreadResponse
+from .responses.get_message_threads_response import AulaGetMessageThreadsResponse
+from .responses.get_notifications_response import AulaGetNotificationsResponse
+from .responses.get_profile_context_response import AulaGetProfileContextResponse
+from .responses.get_weekly_plans_response import GetWeeklyPlansResponse
 from .const import (
     API,
     API_VERSION,
@@ -29,11 +32,14 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+REQUEST_MAX_ATTEMPTS = 3
+"""Maximum number of attempts for requests, when certain errors occurs, such as timeout."""
+
 class AulaProxyClient:
     api_version:int = int(API_VERSION)
 
     _login_result: AulaLoginData | None = None
-    _tokens = dict[AULA_WIDGET_ID, AulaToken]()
+    _tokens = dict[AulaWidgetId, AulaToken]()
     _is_logged_in: bool = False
     _apiurl:str = ""
     _username:str = ""
@@ -44,6 +50,7 @@ class AulaProxyClient:
         self._username = username
         self._password = password
         self._session = requests.Session()
+
 
     def custom_api_call(self, uri:str, post_data:str|None) -> Dict[str,str]:
         csrf_token = self._session.cookies.get_dict()["Csrfp-Token"]
@@ -73,6 +80,7 @@ class AulaProxyClient:
         except:
             responsedata = {"raw_response": response.text}
         return responsedata
+
 
     def login(self) -> AulaLoginData:
         """
@@ -129,12 +137,12 @@ class AulaProxyClient:
         #select unilogin (options: unilogin / MitID / Local login)
         html = BeautifulSoup(non_employee_login_response.text, features="lxml")
         if html.form is None:
-            _LOGGER.debug(f"method=login response: {non_employee_login_response}")
+            _LOGGER.info(f"method=login response: {non_employee_login_response}")
             _LOGGER.error("Login form not found in the HTML response.")
             raise ParseError("Login form not found in the HTML response.")
         url = html.form["action"]
         if isinstance(url, list):
-            _LOGGER.debug(f"method=login response: {non_employee_login_response}")
+            _LOGGER.info(f"method=login response: {non_employee_login_response}")
             _LOGGER.error("Login form found multiple actions in the HTML response.")
             _LOGGER.error(html)
             raise ParseError("Login form found multiple actions in the HTML response.")
@@ -177,7 +185,7 @@ class AulaProxyClient:
             form = html.form
             if form is None:
                 url = None
-                _LOGGER.debug(f"method={url} response: {uni_login_response}")
+                _LOGGER.info(f"method={url} response: {uni_login_response}")
                 _LOGGER.error("Login form not found in the HTML response.")
                 alert = html.find(class_="alert-text")
                 if alert is not None:
@@ -225,7 +233,7 @@ class AulaProxyClient:
                 try:
                     profiles = AulaProfileParser.parse_profiles(api_response.json()["data"]["profiles"])
                 except Exception as e:
-                    _LOGGER.debug(f"method=profiles.getProfilesByLogin response: {api_response}")
+                    _LOGGER.info(f"method=profiles.getProfilesByLogin response: {api_response}")
                     _LOGGER.error(f"Error parsing profiles: {e}")
                     raise
                 # _LOGGER.debug("self._profiles "+str(self._profiles))
@@ -241,7 +249,7 @@ class AulaProxyClient:
                 _LOGGER.error(msg)
                 raise AulaCredentialError(msg)
             else:
-                _LOGGER.debug(f"method=profiles.getProfilesByLogin response: {api_response}")
+                _LOGGER.info(f"method=profiles.getProfilesByLogin response: {api_response}")
                 msg = f"Unknown error occured. Received status code {api_response.status_code}."
                 _LOGGER.error(msg)
                 raise ConnectionRefusedError(msg)
@@ -270,7 +278,7 @@ class AulaProxyClient:
             try:
                 widgets = AulaProfileParser.parse_widgets([widgetconfdata["widget"] for widgetconfdata in detected_widgetsdata])
             except Exception as e:
-                _LOGGER.debug(f"method=profiles.getProfileContext response: {responsedata}")
+                _LOGGER.info(f"method=profiles.getProfileContext response: {responsedata}")
                 _LOGGER.error(f"Error parsing widgets: {e}")
 
         result = AulaLoginData(
@@ -284,73 +292,113 @@ class AulaProxyClient:
         _LOGGER.debug(f"Widgets found: {str.join(", ", [widget.widget_id for widget in widgets])}")
         return result
 
+
     def get_calendar_events(self, profiles: List[AulaInstitutionProfile], start_date: datetime, end_date: datetime) -> List[AulaCalendarEvent]:
         _LOGGER.debug(f"Fetching calendar events for {len(profiles)} profiles")
         if len(profiles) == 0: return []
         inst_profile_ids = list(set(profile.id for profile in profiles))
-
         csrf_token = self._session.cookies.get_dict()["Csrfp-Token"]
-        headers = {"csrfp-token": csrf_token, "content-type": "application/json"}
-
         start = start_date.strftime("%Y-%m-%d 00:00:00.0000%:z")
         end = end_date.strftime("%Y-%m-%d 00:00:00.0000%:z")
 
-        # start = now().strftime("%Y-%m-%d 00:00:00.0000%:z")
-        # end = (now() + timedelta(days=14)).strftime("%Y-%m-%d 00:00:00.0000%:z")
+        headers: Dict[str, str] = {"csrfp-token": csrf_token, "content-type": "application/json"}
 
-        # post_data = (f'{{"instProfileIds":[{str.join(",", child_ids_as_str_list)}],"resourceIds":[],"start":"{start}","end":"{end}"}}')
-        post_data:Dict[str, Any] = dict()
+        post_data:Dict[str, Any]|None = dict()
         post_data["instProfileIds"] = inst_profile_ids
         post_data["resourceIds"] =  []
         post_data["start"] = start
         post_data["end"] = end
 
+        requesturl: str = f"{self._apiurl}?method=calendar.getEventsByProfileIdsAndResourceIds"
+
         # _LOGGER.debug("Calendar post-data: "+str(post_data))
-        responsedata = self._session.post(f"{self._apiurl}?method=calendar.getEventsByProfileIdsAndResourceIds", json=post_data, headers=headers, verify=True).json()
+        response: Response|None = None
+        for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
+            response = self._session.post(requesturl, json=post_data, headers=headers, verify=True)
+            if not self._should_retry_request(response, attempt):
+                break
+        if response == None or response.status_code != HTTPStatus.OK:
+            if response is not None:
+                _LOGGER.error(f"Failed to retrieve calendar events for profileids: {inst_profile_ids}. Error: {response.status_code}/{response.reason} - {response.text}")
+                self._raise_error(response)
+            return []
+        responsedata = response.json()
         # _LOGGER.debug(f"method=presence.getDailyOverview response: {response}")
         try:
             events = AulaCalendarParser.parse_calendar_events(responsedata["data"])
         except Exception as e:
-            _LOGGER.debug(f"method=presence.getDailyOverview response: {responsedata}")
+            _LOGGER.info(f"method=presence.getDailyOverview response: {responsedata}")
             _LOGGER.error(f"Error parsing daily overviews: {e}")
             raise
         # _LOGGER.debug(f"get_calendar_events: {result}")
         _LOGGER.debug(f"Fetched calendar events: {len(events)}")
         return events
 
+
     def get_daily_overviews(self, profiles: List[AulaProfile]) -> List[AulaDailyOverview]:
         _LOGGER.debug(f"Fetching daily overviews for {len(profiles)} profiles")
         if len(profiles) == 0: return []
         children = self.flatten_children(profiles)
         child_ids_as_str_list = list(set(str(child.id) for child in children))
-        responsedata: AulaGetDailyOverviewResponse = self._session.get(f"{self._apiurl}?method=presence.getDailyOverview&childIds[]={str.join("&childIds[]=", child_ids_as_str_list)}",verify=True).json()
+
+        headers:Dict[str, str]|None = None
+        requesturl: str = f"{self._apiurl}?method=presence.getDailyOverview&childIds[]={str.join("&childIds[]=", child_ids_as_str_list)}"
+
+        response: Response|None = None
+        for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
+            response = self._session.get(requesturl, headers=headers, verify=True)
+            if not self._should_retry_request(response, attempt):
+                break
+        if response == None or response.status_code != HTTPStatus.OK:
+            if response is not None:
+                _LOGGER.error(f"Failed to retrieve daily overview for childids: {child_ids_as_str_list}. Error: {response.status_code}/{response.reason} - {response.text}")
+                self._raise_error(response)
+            return []
+        responsedata: AulaGetDailyOverviewResponse = response.json()
+
         try:
-            daily_overviews = AulaProfileParser.parse_daily_overviews(responsedata["data"])
+            daily_overviews = AulaProfileParser.parse_daily_overview_response(responsedata)
             if len(daily_overviews) < len(children):
                 overview_ids = set[int](overview.id for overview in daily_overviews)
                 for child in children:
                     if child.id not in overview_ids:
                         _LOGGER.warning(f"Unable to retrieve presence data from Aula from child with id {child.id}. Some data will be missing from sensor entities.")
         except Exception as e:
-            _LOGGER.debug(f"method=presence.getDailyOverview response: {responsedata}")
+            _LOGGER.info(f"method=presence.getDailyOverview response: {responsedata}")
             _LOGGER.error(f"Error parsing daily overviews: {e}")
             raise
         # _LOGGER.debug(f"get_daily_overviews: {daily_overviews}")
         _LOGGER.debug(f"Fetched daily overviews: {len(daily_overviews)}")
         return daily_overviews
 
+
     def get_message_threads(self) -> List[AulaMessageThread]:
         _LOGGER.debug(f"Fetching message threads")
-        responsedata = self._session.get(f"{self._apiurl}?method=messaging.getThreads&sortOn=date&orderDirection=desc&page=0",verify=True).json()
+        headers:Dict[str, str]|None = None
+        requesturl: str = f"{self._apiurl}?method=messaging.getThreads&sortOn=date&orderDirection=desc&page=0"
+
+        response: Response|None = None
+        for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
+            response = self._session.get(requesturl, headers=headers, verify=True)
+            if not self._should_retry_request(response, attempt):
+                break
+        if response == None or response.status_code != HTTPStatus.OK:
+            if response is not None:
+                _LOGGER.error(f"Failed to retrieve message threads. Error: {response.status_code}/{response.reason} - {response.text}")
+                self._raise_error(response)
+            return []
+        responsedata: AulaGetMessageThreadsResponse = response.json()
+
         try:
-            threads = AulaMessageThreadParser.parse_message_threads(responsedata["data"]["threads"])
+            threads = AulaMessageThreadParser.parse_message_threads_response(responsedata)
         except Exception as e:
-            _LOGGER.debug(f"method=messaging.getThreads response: {responsedata}")
+            _LOGGER.info(f"method=messaging.getThreads response: {responsedata}")
             _LOGGER.error(f"Error parsing message threads: {e}")
             raise
         # _LOGGER.debug(f"get_message_threads: {threads}")
         _LOGGER.debug(f"Fetched message threads: {len(threads)}")
         return threads
+
 
     def get_messages(self, thread: AulaMessageThread) -> List[AulaMessage]:
         """
@@ -361,144 +409,105 @@ class AulaProxyClient:
             ImportError: If the status code of the response is not OK.
         """
         _LOGGER.debug(f"Fetching messages")
+        if not thread: return []
         if thread.sensitive: raise PermissionError("Use Aula to read this message.")
-        msgresponsedata = self._session.get(f"{self._apiurl}?method=messaging.getMessagesForThread&threadId={thread.id}&page=0",verify=True).json()
-        status_code = msgresponsedata["status"]["code"]
-        if status_code == HTTPStatus.FORBIDDEN: raise PermissionError(msgresponsedata["status"]["message"])
-        if status_code != HTTPStatus.OK: raise ImportError(msgresponsedata["status"]["message"])
+        headers:Dict[str, str]|None = None
+        requesturl: str = f"{self._apiurl}?method=messaging.getMessagesForThread&threadId={thread.id}&page=0"
+
+        response: Response|None = None
+        for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
+            response = self._session.get(requesturl, headers=headers, verify=True)
+            if not self._should_retry_request(response, attempt):
+                break
+        if response == None or response.status_code != HTTPStatus.OK:
+            if response is not None:
+                _LOGGER.error(f"Failed to retrieve message threads from thread: {thread.subject} (id {thread.id}). Error: {response.status_code}/{response.reason} - {response.text}")
+                self._raise_error(response)
+            return []
+        responsedata: AulaGetMessagesForThreadResponse = response.json()
         try:
-            messages = AulaMessageThreadParser.parse_messages(msgresponsedata["data"]["messages"])
+            messages = AulaMessageThreadParser.parse_messages_response(responsedata)
         except Exception as e:
-            _LOGGER.debug(f"method=messaging.getMessagesForThread response: {msgresponsedata}")
+            _LOGGER.info(f"method=messaging.getMessagesForThread response: {responsedata}")
             _LOGGER.error(f"Error parsing messages: {e}")
             raise
         # _LOGGER.debug(f"get_messages: {messages}")
+        _LOGGER.debug(f"Fetched messages: {len(messages)}")
         return messages
 
-        """
-        Retrieve messages from a specified thread.
 
-        Raises
-            PermissionError: If the thread is marked as sensitive or if access is forbidden.
-            ImportError: If the status code of the response is not OK.
-        """
-        _LOGGER.debug(f"Fetching messages")
-        if thread.sensitive: raise PermissionError("Use Aula to read this message.")
-        msgresponsedata = self._session.get(f"{self._apiurl}?method=messaging.getMessagesForThread&threadId={thread.id}&page=0",verify=True).json()
-        status_code = msgresponsedata["status"]["code"]
-        if status_code == HTTPStatus.FORBIDDEN: raise PermissionError(msgresponsedata["status"]["message"])
-        if status_code != HTTPStatus.OK: raise ImportError(msgresponsedata["status"]["message"])
+    def get_notifications(self, profiles: List[AulaChildProfile]) -> List[AULA_NOTIFICATION_TYPES]:
+        """Returns a list of notifications"""
+        _LOGGER.debug(f"Fetching notifications for {len(profiles)} profiles")
+        if len(profiles) == 0: return []
+        children = profiles
+        child_userids_as_str_list = list(set(str(child.id) for child in children))
+        institution_profile_codes = list(set(child.institution_code for child in children))
+
+        headers: Dict[str, str] = self._get_aula_header()
+        requesturl: str = f"{self._get_aula_api()}?method=notifications.getNotificationsForActiveProfile&activeChildrenIds[]={str.join("&activeChildrenIds[]=",child_userids_as_str_list)}&activeInstitutionCodes[]={str.join("&activeInstitutionCodes[]=",institution_profile_codes)}"
+
+        response: Response|None = None
+        for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
+            response = self._session.get(requesturl, headers=headers, verify=True)
+            if not self._should_retry_request(response, attempt):
+                break
+        if response == None or response.status_code != HTTPStatus.OK:
+            if response is not None:
+                _LOGGER.error(f"Failed to retrieve notifications from children: {child_userids_as_str_list}. Error: {response.status_code}/{response.reason} - {response.text}")
+                self._raise_error(response)
+            return []
+        responsedata: AulaGetNotificationsResponse = response.json()
         try:
-            messages = AulaMessageThreadParser.parse_messages(msgresponsedata["data"]["messages"])
+            notifications = AulaNotificationParser.parse_notification_response(responsedata)
         except Exception as e:
-            _LOGGER.debug(f"method=messaging.getMessagesForThread response: {msgresponsedata}")
+            _LOGGER.info(f"method=messaging.getMessagesForThread response: {responsedata}")
             _LOGGER.error(f"Error parsing messages: {e}")
             raise
-        # _LOGGER.debug(f"get_messages: {messages}")
-        return messages
+        # _LOGGER.debug(f"get_notifications: {messages}")
+        _LOGGER.debug(f"Fetched notifications: {len(notifications)}")
+        return notifications
 
-    # def get_notifications(self, profiles: List[AulaChildProfile]) -> List[AULA_NOTIFICATION_TYPES]:
-    #     """Returns a list of notifications"""
-    #     _LOGGER.debug(f"Fetching notifications for {len(profiles)} profiles")
-    #     if len(profiles) == 0: return []
-    #     children = profiles
-    #     child_userids_as_str_list = list(set(str(child.user_id) for child in children))
-    #     institution_profile_codes = list(set(child.institution_code for child in children))
-    #     notifications = list[AULA_NOTIFICATION_TYPES]()
-    #     headers: Dict[str, str] = {
-    #         "authority": "app.meebook.com",
-    #         "accept": "application/json",
-    #         "authorization": token.bearer_token,
-    #         "dnt": "1",
-    #         "origin": "https://www.aula.dk",
-    #         "referer": "https://www.aula.dk/",
-    #         "sessionuuid": self._username,
-    #         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
-    #         "x-version": "1.0",
-    #     }
-
-    #     url = f"{self._get_aula_api()}?method=notifications.getNotificationsForActiveProfile&activeChildrenIds[]={str.join("&activeChildrenIds[]=",child_userids_as_str_list)}&activeInstitutionCodes[]={str.join("&activeInstitutionCodes[]=",institution_profile_codes)}"
-    #     responsedatas:List[GetNotificationResponse]|Any = requests.get(url, headers=headers, verify=True).json()
-
-    #     # meebook_persons = json.loads(response.text, strict=False)
-    #     # _LOGGER.debug("Meebook weekplan raw response from week "+week+": "+str(response.text))
-    #     if not isinstance(responsedatas, List):
-    #         _LOGGER.error(f"Failed to retrieve weekly plan for children: {", ".join(f"{child.first_name}({child.user_id})" for child in children)}. Error: {responsedatas}")
-    #     else:
-    #         for responsedata in responsedatas:
-    #             responsedata["from_date"] = from_date
-    #             responsedata["to_date"] = responsedata["from_date"] + timedelta(days=6)
-    #         notifications.extend(AulaWeeklyPlanParser.parse_weekly_plans(responsedatas))
-
-    #     return notifications
 
     def get_weekly_plans(self, profiles: List[AulaChildProfile], from_datetime: datetime, to_datetime: datetime) -> List[AulaWeeklyPlan]:
         """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
-        _LOGGER.debug(f"Fetching weekplan for {len(profiles)} profiles")
+        _LOGGER.debug(f"Fetching weekplan for {len(profiles)} profiles from {from_datetime} to {to_datetime}")
         if len(profiles) == 0: return []
+        if not self._has_widget(AulaWidgetId.WEEKPLAN_PARENTS): return []
         children = profiles
         child_userids_as_str_list = list(set(str(child.user_id) for child in children))
         institution_profile_codes = list(set(child.institution_code for child in children))
-        widgets = [] if self._login_result is None else self._login_result.widgets
+
+        token = self._get_token(AulaWidgetId.WEEKPLAN_PARENTS)
+        headers: Dict[str, str] = self._get_meebook_header(token)
+        requesturl: str = f"{MEEBOOK_API}/relatedweekplan/all?currentWeekNumber={{weekno}}&userProfile=guardian&childFilter[]={str.join("&childFilter[]=",child_userids_as_str_list)}&institutionFilter[]={str.join("&institutionFilter[]=",institution_profile_codes)}"
+
+        response: Response|None = None
         weeklyplans = list[AulaWeeklyPlan]()
-        if self._has_widget(widgets, AULA_WIDGET_ID.WEEKPLAN_PARENTS):
-            # Try Meebook:
-            _LOGGER.debug("In the Meebook flow...")
-            token = self._get_token(AULA_WIDGET_ID.WEEKPLAN_PARENTS)
-            # _LOGGER.debug("Token "+token)
-            headers: Dict[str, str] = {
-                "authority": "app.meebook.com",
-                "accept": "application/json",
-                "authorization": token.bearer_token,
-                "dnt": "1",
-                "origin": "https://www.aula.dk",
-                "referer": "https://www.aula.dk/",
-                "sessionuuid": self._username,
-                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
-                "x-version": "1.0",
-            }
-
-            from_datetime = from_datetime - timedelta(days=from_datetime.weekday()) #ensure it is a monday
+        from_datetime = from_datetime - timedelta(days=from_datetime.weekday()) #ensure it is a monday
+        from_date = from_datetime.date()
+        first_run = True
+        while from_datetime < to_datetime:
             from_date = from_datetime.date()
-            while from_datetime < to_datetime:
-                from_date = from_datetime.date()
-                week_no_str = self._get_aula_week_formatted(from_date)
-                url = f"{MEEBOOK_API}/relatedweekplan/all?currentWeekNumber={week_no_str}&userProfile=guardian&childFilter[]={str.join("&childFilter[]=",child_userids_as_str_list)}&institutionFilter[]={str.join("&institutionFilter[]=",institution_profile_codes)}"
-                responsedatas:List[GetWeeklyPlansResponse]|Any = requests.get(url, headers=headers, verify=True).json()
-
-                # meebook_persons = json.loads(response.text, strict=False)
-                # _LOGGER.debug("Meebook weekplan raw response from week "+week+": "+str(response.text))
-                if not isinstance(responsedatas, List):
-                    _LOGGER.error(f"Failed to retrieve weekly plan for children: {", ".join(f"{child.first_name}({child.user_id})" for child in children)}. Error: {responsedatas}")
-                else:
-                    for responsedata in responsedatas:
-                        responsedata["from_date"] = from_date
-                        responsedata["to_date"] = responsedata["from_date"] + timedelta(days=6)
-                    weeklyplans.extend(AulaWeeklyPlanParser.parse_weekly_plans(responsedatas))
-                from_datetime += timedelta(weeks=1)
-
-            return weeklyplans
-
-            # for plan in weeklyplans:
-            #     _LOGGER.debug(f"Meebook weekplan for {plan["name"]}")
-            #     ugep = ""
-            #     weekplan = plan["weekPlan"]
-            #     for day in weekplan:
-            #         ugep += f"<h3>{day["date"]}</h3>"
-            #         if len(day["tasks"]) > 0:
-            #             for task in day["tasks"]:
-            #                 if not task["pill"] == "Ingen fag tilknyttet":
-            #                     ugep += f"<b>{task["pill"]}</b><br>"
-            #                 ugep += f"{task["author"]}<br><br>"
-            #                 content = re.sub(r"([0-9]+)(\.)", r"\1\.", task["content"])
-            #                 ugep += f"{content}<br><br>"
-            #         else:
-            #             ugep += "-"
-            #     # try:
-            #     #     name = person["first_name"]
-            #     # except:
-            #     #     name = person["name"]
-            #     result = ugep
+            weekno = self._get_aula_week_formatted(from_date)
+            for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
+                response = self._session.get(requesturl.format(weekno=weekno), headers=headers, verify=True)
+                if not self._should_retry_request(response, attempt):
+                    break
+            if response == None or response.status_code != HTTPStatus.OK:
+                if response is not None:
+                    _LOGGER.error(f"Failed to retrieve notifications from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}")
+                    if not first_run: continue
+                    self._raise_error(response)
+                return []
+            responsedata: List[GetWeeklyPlansResponse] = response.json()
+            # assign dates to the weekly plans - we need them later
+            for respdata in responsedata:
+                respdata["from_date"] = from_date
+                respdata["to_date"] = respdata["from_date"] + timedelta(days=6)
+            weeklyplans.extend(AulaWeeklyPlanParser.parse_weekly_plans(responsedata))
+            from_datetime += timedelta(weeks=1)
+            first_run = False
         _LOGGER.debug(f"Fetched weekplan: {len(weeklyplans)}")
         return weeklyplans
 
@@ -512,10 +521,9 @@ class AulaProxyClient:
         children = self.flatten_children(profiles)
         child_ids_as_str_list = set(str(child.id) for child in children)
         childUserIds = ",".join(child_ids_as_str_list)
-        widgets = [] if self._login_result is None else self._login_result.widgets
         weekletters = dict[str, str]()
-        if self._has_widget(widgets, AULA_WIDGET_ID.MY_EDUCATION_WEEKLETTER) and not self._has_widget(widgets, AULA_WIDGET_ID.MY_EDUCATION_ASSIGNMENTS):
-            token = self._get_token(AULA_WIDGET_ID.MY_EDUCATION_WEEKLETTER)
+        if self._has_widget(AulaWidgetId.MY_EDUCATION_WEEKLETTER) and not self._has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS):
+            token = self._get_token(AulaWidgetId.MY_EDUCATION_WEEKLETTER)
             week_no_str = self._get_aula_week_formatted(timestamp)
             get_payload = (f"/ugebrev?assuranceLevel=2&childFilter={childUserIds}&currentWeekNumber={week_no_str}&isMobileApp=false&placement=narrow&sessionUUID={userid}&userProfile=guardian")
             response = requests.get(
@@ -547,10 +555,9 @@ class AulaProxyClient:
         child_ids_as_str_list = set(str(child.id) for child in children)
         childUserIds = ",".join(child_ids_as_str_list)
         result = dict[str, str]()
-        widgets = [] if self._login_result is None else self._login_result.widgets
-        if self._has_widget(widgets, AULA_WIDGET_ID.MY_EDUCATION_ASSIGNMENTS):
+        if self._has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS):
             _LOGGER.debug("In the MU assignments flow")
-            token = self._get_token(AULA_WIDGET_ID.MY_EDUCATION_ASSIGNMENTS)
+            token = self._get_token(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS)
             week_no_str = self._get_aula_week_formatted(timestamp)
             get_payload = f"/opgaveliste?assuranceLevel=2&childFilter={childUserIds}&currentWeekNumber={week_no_str}&isMobileApp=false&placement=narrow&sessionUUID={userid}&userProfile=guardian"
             response = requests.get(
@@ -593,23 +600,13 @@ class AulaProxyClient:
         children = self.flatten_children(profiles)
         institution_profile_codes = list(set(child.institution_code for child in children))
 
-        widgets = [] if self._login_result is None else self._login_result.widgets
         result = dict[str, str]()
-        if self._has_widget(widgets, AULA_WIDGET_ID.EASYIQ_WEEKPLAN):
+        if self._has_widget(AulaWidgetId.EASYIQ_WEEKPLAN):
             _LOGGER.debug("In the EasyIQ flow")
-            token = self._get_token(AULA_WIDGET_ID.EASYIQ_WEEKPLAN)
+            token = self._get_token(AulaWidgetId.EASYIQ_WEEKPLAN)
             csrf_token = self._session.cookies.get_dict()["Csrfp-Token"]
 
-            easyiq_headers = {
-                "x-aula-institutionfilter": institution_profile_codes[0],
-                "x-aula-userprofile": "guardian",
-                "Authorization": token.bearer_token,
-                "accept": "application/json",
-                "csrfp-token": csrf_token,
-                "origin": "https://www.aula.dk",
-                "referer": "https://www.aula.dk/",
-                "authority": "api.easyiqcloud.dk",
-            }
+            easyiq_headers = self._get_easyiq_header(token, institution_profile_codes[0], csrf_token)
 
             week_no_str = self._get_aula_week_formatted(timestamp)
             for child in children:
@@ -677,24 +674,11 @@ class AulaProxyClient:
         child_ids_as_str_list = list(set(str(child.id) for child in children))
         institution_profile_codes = list(set(child.institution_code for child in children))
 
-        widgets = [] if self._login_result is None else self._login_result.widgets
         result = dict[str, str]()
-        if self._has_widget(widgets, AULA_WIDGET_ID.REMINDERS):
+        if self._has_widget(AulaWidgetId.REMINDERS):
             _LOGGER.debug("In the Huskelisten flow...")
-            token = self._get_token(AULA_WIDGET_ID.REMINDERS)
-            huskelisten_headers = {
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Accept-Language": "en-US,en;q=0.9,da;q=0.8",
-                "Aula-Authorization": token.bearer_token,
-                "Origin": "https://www.aula.dk",
-                "Referer": "https://www.aula.dk/",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "cross-site",
-                "User-Agent": "Mozilla/5.0 (X11; CrOS x86_64 15183.51.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
-                "zone": "Europe/Copenhagen",
-            }
+            token = self._get_token(AulaWidgetId.REMINDERS)
+            huskelisten_headers = self._get_aula_header(token)
 
             children = "&children=".join(child_ids_as_str_list)
             institutions = "&institutions=".join(institution_profile_codes)
@@ -746,7 +730,7 @@ class AulaProxyClient:
         _LOGGER.debug(f"Fetched reminders: {len(result)}")
         return result
 
-    def _get_token(self, widgetid:AULA_WIDGET_ID) -> AulaToken:
+    def _get_token(self, widgetid:AulaWidgetId) -> AulaToken:
         _LOGGER.debug(f"Requesting new token for widget {widgetid}")
         if widgetid in self._tokens:
             token = self._tokens[widgetid]
@@ -786,6 +770,66 @@ class AulaProxyClient:
 
         return newid
 
+
+    def _has_widget(self, widget_match: AulaWidgetId) -> bool:
+        widgets = [] if self._login_result is None else self._login_result.widgets
+        return any(widget.widget_id == widget_match for widget in widgets)
+
+    def _get_aula_api(self) -> str:
+        return API + str(self.api_version)
+
+    def _get_meebook_header(self, token: AulaToken|None = None) -> Dict[str,str]:
+        result: Dict[str, str] = {
+            "authority": "app.meebook.com",
+            "accept": "application/json",
+            "dnt": "1",
+            "origin": "https://www.aula.dk",
+            "referer": "https://www.aula.dk/",
+            "sessionuuid": self._username,
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
+            "x-version": "1.0",
+        }
+
+        if token:
+            result["authorization"] = token.bearer_token
+
+        return result
+
+    def _get_easyiq_header(self, token: AulaToken|None, institution_profile_code: str, csrf_token: str) -> Dict[str,str]:
+        result: Dict[str, str] = {
+            "x-aula-institutionfilter": institution_profile_code,
+            "x-aula-userprofile": "guardian",
+            "accept": "application/json",
+            "csrfp-token": csrf_token,
+            "origin": "https://www.aula.dk",
+            "referer": "https://www.aula.dk/",
+            "authority": "api.easyiqcloud.dk",
+            }
+
+        if token:
+            result["authorization"] = token.bearer_token
+
+        return result
+
+    def _get_aula_header(self, token: AulaToken|None = None) -> Dict[str,str]:
+        result: Dict[str, str] = {
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Accept-Language": "en-US,en;q=0.9,da;q=0.8",
+                "Origin": "https://www.aula.dk",
+                "Referer": "https://www.aula.dk/",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "cross-site",
+                "User-Agent": "Mozilla/5.0 (X11; CrOS x86_64 15183.51.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
+                "zone": "Europe/Copenhagen",
+            }
+
+        if token:
+            result["authorization"] = token.bearer_token
+
+        return result
+
     @staticmethod
     def flatten_children(profiles: Iterable[AulaProfile]) -> List[AulaChildProfile]:
         result: List[AulaChildProfile] = []
@@ -819,13 +863,38 @@ class AulaProxyClient:
             return False
 
     @staticmethod
-    def _has_widget(widgets: List[AulaWidget], widget_match: AULA_WIDGET_ID) -> bool:
-        return any(widget.widget_id == widget_match for widget in widgets)
-
-
-    @staticmethod
     def _get_aula_week_formatted(timestamp: datetime|date) -> str:
         return timestamp.strftime("%Y-W%W")
 
-    def _get_aula_api(self) -> str:
-        return API + str(self.api_version)
+    @staticmethod
+    def _is_last_attempt(attempt: int) -> bool:
+        """Check if the current retry attempt is the last one"""
+        return attempt >= REQUEST_MAX_ATTEMPTS
+
+    @staticmethod
+    def _should_retry_request(response: Response, attempt: int) -> bool:
+        if response.status_code == HTTPStatus.OK:
+            return False
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            if not AulaProxyClient._is_last_attempt(attempt):
+                _LOGGER.debug(f"Failed to retrieve calendar due to authorization errors, will retry (attempt {attempt}/{REQUEST_MAX_ATTEMPTS}): {response}")
+                return True
+        status = HTTPStatus(response.status_code)
+        if status.is_server_error:
+            if not AulaProxyClient._is_last_attempt(attempt):
+                _LOGGER.debug(f"Failed to retrieve calendar due to server errors, will retry (attempt {attempt}/{REQUEST_MAX_ATTEMPTS}): {response}")
+                return True
+        return False
+
+    @staticmethod
+    def _raise_error(response: Response | None) -> None:
+        if response is None: return
+        if response.ok: return
+        responsedata = response.json()
+        if response.status_code == HTTPStatus.UNAUTHORIZED: raise PermissionError(responsedata["status"]["message"])
+        if response.status_code == HTTPStatus.PAYMENT_REQUIRED: raise PermissionError(responsedata["status"]["message"])
+        if response.status_code == HTTPStatus.FORBIDDEN: raise PermissionError(responsedata["status"]["message"])
+        if response.status_code != HTTPStatus.OK: raise ImportError(responsedata["status"]["message"])
+        if HTTPStatus(response.status_code).is_client_error:
+            raise ConnectionRefusedError(response)
+        response.raise_for_status()

@@ -1,4 +1,4 @@
-from .constants import AULA_CALENDAR_EVENT_TYPE
+from .constants import AulaCalendarEventType
 
 from .aula_calendar_parser import AulaCalendarParser
 from .aula_message_thread_parser import AulaMessageThreadParser
@@ -41,11 +41,23 @@ from .aula_weekly_plan_models import(
     AulaDailyPlanTask
 )
 
+from .aula_notication_models import(
+    AulaNotificationBase,
+    AulaAlbumNotification,
+    AulaCalendarEventNotification,
+    AulaGalleryNotification,
+    AulaMessageNotification,
+    NotificationArea,
+    NotificationType,
+    NotificationEventType,
+    AULA_NOTIFICATION_TYPES,
+)
+
 # Add other imports here as needed
 
 __all__ = [
     #constants
-    'AULA_CALENDAR_EVENT_TYPE',
+    'AulaCalendarEventType',
 
     #parsers
     'AulaProfileParser',
@@ -83,4 +95,14 @@ __all__ = [
     'AulaWeeklyPlan',
     'AulaDailyPlan',
     'AulaDailyPlanTask',
+
+    'AulaNotificationBase',
+    'AulaAlbumNotification',
+    'AulaCalendarEventNotification',
+    'AulaGalleryNotification',
+    'AulaMessageNotification',
+    'NotificationArea',
+    'NotificationEventType',
+    'NotificationType',
+    'AULA_NOTIFICATION_TYPES',
 ]

@@ -1,4 +1,5 @@
 from typing import Any, List, NotRequired, TypedDict
+from .common_data import AulaProfilePictureData
 
 class AulaProfileContextStatusData(TypedDict):
     code: NotRequired[int|None]
@@ -9,13 +10,6 @@ class AulaProfileContextAddressData(TypedDict):
     postalCode: NotRequired[int|None]
     postalDistrict: NotRequired[str|None]
     street: NotRequired[str|None]
-
-class AulaProfileContextProfilePictureData(TypedDict):
-    bucket: NotRequired[str|None]
-    id: NotRequired[int|None]
-    isImageScalingPending: NotRequired[bool|None]
-    key: NotRequired[str|None]
-    url: NotRequired[str|None]
 
 class AulaProfileContextAdministrativeAuthorityData(TypedDict):
     id: NotRequired[int|None]
@@ -41,7 +35,7 @@ class AulaProfileContextRelationData(TypedDict):
     mainGroupName: NotRequired[str|None]
     metadata: NotRequired[str|None]
     profileId: NotRequired[int|None]
-    profilePicture: NotRequired[AulaProfileContextProfilePictureData|None]
+    profilePicture: NotRequired[AulaProfilePictureData|None]
     role: NotRequired[str|None]
     shortName: NotRequired[str|None]
     uniPersonId: NotRequired[int|None]
@@ -64,7 +58,7 @@ class AulaProfileContextInstitutionProfileData(TypedDict):
     metadata: NotRequired[str|None]
     phone: NotRequired[str|None]
     profileId: NotRequired[int|None]
-    profilePicture: NotRequired[AulaProfileContextProfilePictureData|None]
+    profilePicture: NotRequired[AulaProfilePictureData|None]
     relations: NotRequired[List[AulaProfileContextRelationData]|None]
     role: NotRequired[str|None]
     shortName: NotRequired[str|None]
@@ -78,7 +72,7 @@ class AulaProfileContextChildData(TypedDict):
     institutionCode: NotRequired[str|None]
     name: NotRequired[str|None]
     profileId: NotRequired[int|None]
-    profilePicture: NotRequired[AulaProfileContextProfilePictureData|None]
+    profilePicture: NotRequired[AulaProfilePictureData|None]
     shortName: NotRequired[str|None]
 
 class AulaProfileContextGroupData(TypedDict):

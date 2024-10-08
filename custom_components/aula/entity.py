@@ -4,8 +4,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from typing import Generic, TypeVar
 import logging
 
-from custom_components.aula.aula_calendar_coordinator import AulaCalendarCoordinator
-
 from .const import DOMAIN, MANUFACTRURER
 from .aula_data_coordinator import AulaDataCoordinator, AulaDataCoordinatorData
 from .aula_calendar_coordinator import AulaCalendarCoordinator, AulaCalendarCoordinatorData

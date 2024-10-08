@@ -12,6 +12,7 @@ from .aula_proxy.models.module import (
     AulaDailyOverview,
     AulaMessageThread,
     AulaProfile,
+    AULA_NOTIFICATION_TYPES
 )
 from .aula_client import AulaClient
 from .aula_proxy.aula_errors import AulaCredentialError
@@ -26,6 +27,7 @@ class AulaDataCoordinatorData:
     children: List[AulaChildProfile]
     daily_overviews: List[AulaDailyOverview]
     message_threads: List[AulaMessageThread]
+    notifications: List[AULA_NOTIFICATION_TYPES]
 
 class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
     """My custom coordinator."""
@@ -106,14 +108,16 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
             profiles = logindata.profiles
             self.aula_version = logindata.api_version
             daily_overviews = self._client.get_daily_overviews(profiles)
-            message_threads = self._client.get_message_threads(profiles)
+            message_threads = self._client.get_message_threads()
+            notifications = self._client.get_notifications([child for profile in profiles for child in profile.children])
             data = AulaDataCoordinatorData(
-                device_id = self.device_id,
                 aula_version = self.aula_version,
-                profiles = profiles,
                 children = [child for profile in profiles for child in profile.children],
                 daily_overviews = daily_overviews,
-                message_threads = message_threads
+                device_id = self.device_id,
+                message_threads = message_threads,
+                notifications = notifications,
+                profiles = profiles,
             )
         except Exception as ex:
             _LOGGER.error(ex)

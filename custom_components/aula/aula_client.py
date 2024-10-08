@@ -13,6 +13,7 @@ from .aula_proxy.module import (
         AulaProxyClient,
         AulaWeeklyPlan,
         AulaChildProfile,
+        AULA_NOTIFICATION_TYPES
     )
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,14 +49,17 @@ class AulaClient:
     def login(self) -> AulaLoginData:
         return self._proxy.login()
 
-    def get_message_threads(self, profiles: List[AulaProfile]) -> List[AulaMessageThread]:
-        return self._proxy.get_message_threads()
-
     def get_daily_overviews(self, profiles: List[AulaProfile]) -> List[AulaDailyOverview]:
         return self._proxy.get_daily_overviews(profiles)
 
     def get_calendar_events(self, profiles: List[AulaInstitutionProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaCalendarEvent]:
         return self._proxy.get_calendar_events(profiles, start_datetime, end_datetime)
+
+    def get_message_threads(self) -> List[AulaMessageThread]:
+        return self._proxy.get_message_threads()
+
+    def get_notifications(self, profiles: List[AulaChildProfile]) -> List[AULA_NOTIFICATION_TYPES]:
+        return self._proxy.get_notifications(profiles)
 
     def get_weekly_plans(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaWeeklyPlan]:
         return self._proxy.get_weekly_plans(profiles, start_datetime, end_datetime)

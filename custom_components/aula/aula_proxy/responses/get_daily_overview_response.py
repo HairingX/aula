@@ -1,11 +1,6 @@
 from typing import NotRequired, TypedDict, List
 
-class AulaDailyOverviewProfilePictureData(TypedDict):
-    bucket: NotRequired[str|None]
-    id: NotRequired[str|None]
-    isImageScalingPending: NotRequired[bool|None]
-    key: NotRequired[str|None]
-    url: NotRequired[str|None]
+from .common_data import AulaProfilePictureData
 
 class AulaDailyOverviewInstitutionProfileData(TypedDict):
     id: NotRequired[str|None]
@@ -16,7 +11,7 @@ class AulaDailyOverviewInstitutionProfileData(TypedDict):
     metadata: NotRequired[str|None]
     name: NotRequired[str|None]
     profileId: NotRequired[str|None]
-    profilePicture: NotRequired[AulaDailyOverviewProfilePictureData|None]
+    profilePicture: NotRequired[AulaProfilePictureData|None]
     role: NotRequired[str|None]
     shortName: NotRequired[str|None]
 
