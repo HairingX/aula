@@ -7,6 +7,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 import async_timeout
 import logging
 
+from .aula_proxy.models.constants import AulaWidgetId
 from .aula_proxy.models.module import (
     AulaChildProfile,
     AulaDailyOverview,
@@ -98,6 +99,21 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
                 raise UpdateFailed(error.args)
             else:
                 raise UpdateFailed(error)
+
+    def weekly_plans_supported(self) -> bool:
+        return self._client.has_widget(AulaWidgetId.WEEKPLAN_PARENTS)
+
+    def easyiq_weekplan_supported(self) -> bool:
+        return self._client.has_widget(AulaWidgetId.EASYIQ_WEEKPLAN)
+
+    def reminders_supported(self) -> bool:
+        return self._client.has_widget(AulaWidgetId.REMINDERS)
+
+    def weekletters_supported(self) -> bool:
+        return self._client.has_widget(AulaWidgetId.MY_EDUCATION_WEEKLETTER)
+
+    def assignments_supported(self) -> bool:
+        return self._client.has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS)
 
     def _connection_check(self) -> Exception | None:
         return self._client.connection_check()

@@ -1,8 +1,9 @@
-from typing import Dict, List, Tuple, TypedDict
+from typing import List, TypedDict
 import datetime
 import logging
 
 from .const import API_VERSION
+from .aula_proxy.models.constants import AulaWidgetId
 from .aula_proxy.module import (
         AulaCalendarEvent,
         AulaDailyOverview,
@@ -25,13 +26,6 @@ class AulaClient:
     aula_version: int = int(API_VERSION)
     _proxy: AulaProxyClient
 
-    huskeliste:Dict[str,str] = {}
-    presence:Dict[str,bool] = {}
-    ugep_attr:Dict[str,str] = {}
-    ugepnext_attr:Dict[str,str] = {}
-    widgets:Dict[str,str] = {}
-    tokens:Dict[str, Tuple[str, datetime.datetime]] = {}
-
     def __init__(self, username:str, password:str):
         self._proxy = AulaProxyClient(username, password)
 
@@ -45,6 +39,9 @@ class AulaClient:
         """
         self._proxy.login()
         self.aula_version = self._proxy.api_version
+
+    def has_widget(self, widgetid: AulaWidgetId):
+        return self._proxy.has_widget(widgetid)
 
     def login(self) -> AulaLoginData:
         return self._proxy.login()

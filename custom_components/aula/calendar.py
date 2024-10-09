@@ -34,15 +34,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     data_coordinator = get_aula_data_coordinator(hass, entry)
     calendar_coordinator = get_aula_calendar_coordinator(hass, entry)
     await calendar_coordinator.async_config_entry_first_refresh()
-    entities: List[AulaEventCalendar|AulaWeekPlanCalendar] = []
+    entities: List[AulaEventCalendar|AulaWeeklyPlanCalendar] = []
     for child in data_coordinator.data.children:
         entities.append(AulaEventCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
     for profile in data_coordinator.data.profiles:
         for institution in profile.institution_profiles:
             entities.append(AulaEventCalendar(calendar_coordinator, data_coordinator, profile, institution))
 
-    for child in data_coordinator.data.children:
-        entities.append(AulaWeekPlanCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
+    if data_coordinator.weekly_plans_supported():
+        for child in data_coordinator.data.children:
+            entities.append(AulaWeeklyPlanCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
 
     # if data_coordinator.data
     async_add_entities(entities)
@@ -170,7 +171,7 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
         return result
 
 
-class AulaWeekPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
+class AulaWeeklyPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
     """A calendar event entity."""
     _event: CalendarEvent | None = None
     _profile: AulaChildProfile

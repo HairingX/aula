@@ -473,7 +473,7 @@ class AulaProxyClient:
         """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
         _LOGGER.debug(f"Fetching weekplan for {len(profiles)} profiles from {from_datetime} to {to_datetime}")
         if len(profiles) == 0: return []
-        if not self._has_widget(AulaWidgetId.WEEKPLAN_PARENTS): return []
+        if not self.has_widget(AulaWidgetId.WEEKPLAN_PARENTS): return []
         children = profiles
         child_userids_as_str_list = list(set(str(child.user_id) for child in children))
         institution_profile_codes = list(set(child.institution_code for child in children))
@@ -512,7 +512,7 @@ class AulaProxyClient:
         return weeklyplans
 
 
-    #TODO: Return List of known types
+    #TODO: Not yet implemented, cannot test new parsing syntax
     def get_weekly_newsletters(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
         """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
         _LOGGER.debug(f"Fetching weekly newsletters for {len(profiles)} profiles")
@@ -522,7 +522,7 @@ class AulaProxyClient:
         child_ids_as_str_list = set(str(child.id) for child in children)
         childUserIds = ",".join(child_ids_as_str_list)
         weekletters = dict[str, str]()
-        if self._has_widget(AulaWidgetId.MY_EDUCATION_WEEKLETTER) and not self._has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS):
+        if self.has_widget(AulaWidgetId.MY_EDUCATION_WEEKLETTER) and not self.has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS):
             token = self._get_token(AulaWidgetId.MY_EDUCATION_WEEKLETTER)
             week_no_str = self._get_aula_week_formatted(timestamp)
             get_payload = (f"/ugebrev?assuranceLevel=2&childFilter={childUserIds}&currentWeekNumber={week_no_str}&isMobileApp=false&placement=narrow&sessionUUID={userid}&userProfile=guardian")
@@ -545,7 +545,7 @@ class AulaProxyClient:
         _LOGGER.debug(f"Fetched weekly newsletters: {len(weekletters)}")
         return weekletters
 
-    #TODO: Return List of known types
+    #TODO: Not yet implemented, cannot test new parsing syntax
     def get_task_list(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
         """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
         _LOGGER.debug(f"Fetching task list for {len(profiles)} profiles")
@@ -555,7 +555,7 @@ class AulaProxyClient:
         child_ids_as_str_list = set(str(child.id) for child in children)
         childUserIds = ",".join(child_ids_as_str_list)
         result = dict[str, str]()
-        if self._has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS):
+        if self.has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS):
             _LOGGER.debug("In the MU assignments flow")
             token = self._get_token(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS)
             week_no_str = self._get_aula_week_formatted(timestamp)
@@ -591,7 +591,7 @@ class AulaProxyClient:
         _LOGGER.debug(f"Fetched task list: {len(result)}")
         return result
 
-    #TODO: Return List of known types
+    #TODO: Not yet implemented, cannot test new parsing syntax
     def get_easyiq_weekplan(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
         """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
         _LOGGER.debug(f"Fetching easyiq weekplan for {len(profiles)} profiles")
@@ -601,7 +601,7 @@ class AulaProxyClient:
         institution_profile_codes = list(set(child.institution_code for child in children))
 
         result = dict[str, str]()
-        if self._has_widget(AulaWidgetId.EASYIQ_WEEKPLAN):
+        if self.has_widget(AulaWidgetId.EASYIQ_WEEKPLAN):
             _LOGGER.debug("In the EasyIQ flow")
             token = self._get_token(AulaWidgetId.EASYIQ_WEEKPLAN)
             csrf_token = self._session.cookies.get_dict()["Csrfp-Token"]
@@ -665,7 +665,7 @@ class AulaProxyClient:
         _LOGGER.debug(f"Fetched easyiq weekplan: {len(result)}")
         return result
 
-    #TODO: Return List of known types
+    #TODO: Not yet implemented, cannot test new parsing syntax
     def get_reminders(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
         """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
         _LOGGER.debug(f"Fetching reminders for {len(profiles)} profiles")
@@ -675,7 +675,7 @@ class AulaProxyClient:
         institution_profile_codes = list(set(child.institution_code for child in children))
 
         result = dict[str, str]()
-        if self._has_widget(AulaWidgetId.REMINDERS):
+        if self.has_widget(AulaWidgetId.REMINDERS):
             _LOGGER.debug("In the Huskelisten flow...")
             token = self._get_token(AulaWidgetId.REMINDERS)
             huskelisten_headers = self._get_aula_header(token)
@@ -730,6 +730,8 @@ class AulaProxyClient:
         _LOGGER.debug(f"Fetched reminders: {len(result)}")
         return result
 
+
+
     def _get_token(self, widgetid:AulaWidgetId) -> AulaToken:
         _LOGGER.debug(f"Requesting new token for widget {widgetid}")
         if widgetid in self._tokens:
@@ -748,7 +750,6 @@ class AulaProxyClient:
         self._tokens[widgetid] = token
         return token
 
-    #TODO: Return List of known types
     def _get_user_id(self, profiles: List[AulaProfile]) -> str:
         """Ensures that each profile in the provided list has a user_id by fetching it from the API."""
         currentid: str|None = None
@@ -770,8 +771,7 @@ class AulaProxyClient:
 
         return newid
 
-
-    def _has_widget(self, widget_match: AulaWidgetId) -> bool:
+    def has_widget(self, widget_match: AulaWidgetId) -> bool:
         widgets = [] if self._login_result is None else self._login_result.widgets
         return any(widget.widget_id == widget_match for widget in widgets)
 
