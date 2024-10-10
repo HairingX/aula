@@ -4,7 +4,7 @@ import logging
 from ..responses.get_notifications_response import AulaGetNotificationsResponse, AulaNotificationData
 from ..utils.list_utils import list_without_none
 
-from .aula_notication_models import AULA_NOTIFICATION_TYPES, AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaMessageNotification, NotificationArea
+from .aula_notication_models import *
 from .aula_parser import AulaParser
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,6 +51,22 @@ class AulaNotificationParser(AulaParser):
         return result
 
     @staticmethod
+    def parse_post(data: AulaNotificationData | None) -> AulaPostNotification | None:
+        if not data: return None
+        result = AulaPostNotification(
+            expires=AulaNotificationParser._parse_datetime(data.get("expires")),
+            notification_area=AulaNotificationParser._parse_str(data.get("notificationArea")),
+            notification_event_type=AulaNotificationParser._parse_str(data.get("notificationEventType")),
+            notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
+            notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
+            triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
+            institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
+            institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
+            title=AulaNotificationParser._parse_str(data.get("postTitle")),
+        )
+        return result
+
+    @staticmethod
     def parse_album(data: AulaNotificationData | None) -> AulaAlbumNotification | None:
         if not data: return None
         result = AulaAlbumNotification(
@@ -87,7 +103,7 @@ class AulaNotificationParser(AulaParser):
         return result
 
     @staticmethod
-    def parse_notification(data: AulaNotificationData | None) -> AULA_NOTIFICATION_TYPES | None:#AulaAlbumNotificationEvent | AulaCalendarEventNotification | AulaGalleryNotificationEvent | AulaMessageNotificationEvent | AulaGenericEvent | None:
+    def parse_notification(data: AulaNotificationData | None) -> AULA_NOTIFICATION_TYPES | None:
         if not data: return None
 
         notification_area = data.get("notificationArea")
@@ -100,6 +116,8 @@ class AulaNotificationParser(AulaParser):
                 return AulaNotificationParser.parse_album(data)
             case NotificationArea.GALLERY:
                 return AulaNotificationParser.parse_gallery(data)
+            case NotificationArea.POSTS:
+                return AulaNotificationParser.parse_post(data)
             case _:
                 _LOGGER.warning(f"Notification '{notification_area}' is unknown, report to developer: {data}")
                 return None

@@ -8,7 +8,7 @@ import logging
 from .entity import AulaEntityBase
 from .aula_data_coordinator import AulaDataCoordinator, AulaDataCoordinatorData
 from .aula_data import get_aula_data_coordinator
-from .aula_proxy.module import AulaMessageThread, AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification
+from .aula_proxy.module import AulaMessageThread, AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaPostNotification
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities.append(AulaUnreadMessageBinarySensor(coordinator))
     entities.append(AulaUnreadGalleryBinarySensor(coordinator))
     entities.append(AulaUnreadCalendarEventBinarySensor(coordinator))
+    entities.append(AulaUnreadPostBinarySensor(coordinator))
     async_add_entities(entities)
 
 
@@ -107,4 +108,28 @@ class AulaUnreadMessageBinarySensor(AulaEntityBase[None], BinarySensorEntity): #
                 text = latestmsg.text
                 html = None if text is None else text.html
                 attributes["text"] = html
+        self._attr_extra_state_attributes = attributes
+
+class AulaUnreadPostBinarySensor(AulaEntityBase[None], BinarySensorEntity): # type: ignore
+    def __init__(self, coordinator: AulaDataCoordinator):
+        super().__init__(coordinator, name="unread_post", context=None)
+        self._init_data()
+
+    def _set_values(self, data: AulaDataCoordinatorData, context:None) -> None:
+        self._attr_is_on = False
+        notifications = data.notifications
+        total = 0
+        first: AulaPostNotification|None = None
+        for notification in notifications:
+            if  isinstance(notification, AulaPostNotification):
+                total += 1
+                if not first: first = notification
+
+        self._attr_is_on = total > 0
+        self._attr_icon = 'mdi:bulletin-board'
+        attributes = dict[str, Any]()
+        attributes["total"] = total
+        attributes["title"] = None
+        if first:
+            attributes["title"] = first.title
         self._attr_extra_state_attributes = attributes

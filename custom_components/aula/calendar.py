@@ -306,7 +306,8 @@ class AulaWeeklyPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ig
 
     def _create_calendar_event(self, weekplan: AulaWeeklyPlan, dailyplan: AulaDailyPlan, task: AulaDailyPlanTask) -> CalendarEvent:
         """Return a CalendarEvent from a API weekplan."""
-        summary = task.content.split("\n", 1)[0]
+        contentpart = task.content#.split("\n", 1)[0]
+        summary = contentpart#(contentpart[:73] + "...") if len(contentpart) > 75 else contentpart
         description = task.content
         start_date = dailyplan.date
         end_date = start_date + timedelta(days=1)

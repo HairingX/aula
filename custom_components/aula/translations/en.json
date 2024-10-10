@@ -82,6 +82,17 @@
             "name": "Total"
           }
         }
+      },
+      "unread_post": {
+        "name": "Unread Post",
+        "state_attributes": {
+          "title": {
+            "name": "Title"
+          },
+          "total": {
+            "name": "Total"
+          }
+        }
       }
     },
     "calendar": {

@@ -70,5 +70,12 @@ class AulaMessageNotification(AulaNotificationBase):
     thread_id: int
     NOTIFICATION_AREA:NotificationArea = NotificationArea.MESSAGES
 
+@dataclass
+class AulaPostNotification(AulaNotificationBase):
+    institution_code: str
+    institution_profile_id: int
+    title: str
+    NOTIFICATION_AREA:NotificationArea = NotificationArea.POSTS
 
-AULA_NOTIFICATION_TYPES = Union[AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaMessageNotification]
+
+AULA_NOTIFICATION_TYPES = Union[AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaMessageNotification, AulaPostNotification]
