@@ -24,12 +24,10 @@ from .aula_message_thread_models import (
 from .aula_profile_models import (
     AulaChildProfile,
     AulaDailyOverview,
-    AulaGroup,
     AulaInstitutionProfile,
     AulaLocation,
     AulaLoginData,
     AulaProfile,
-    AulaProfileAddress,
     AulaProfilePicture,
     AulaToken,
     AulaWidget,
@@ -51,6 +49,11 @@ from .aula_notication_models import(
     NotificationType,
     NotificationEventType,
     AULA_NOTIFICATION_TYPES,
+)
+
+from .aula_weekly_newsletter_models import (
+    AulaWeeklyNewsletter,
+    AulaWeeklyNewsletters,
 )
 
 # Add other imports here as needed
@@ -82,12 +85,10 @@ __all__ = [
 
     'AulaChildProfile',
     'AulaDailyOverview',
-    'AulaGroup',
     'AulaInstitutionProfile',
     'AulaLocation',
     'AulaLoginData',
     'AulaProfile',
-    'AulaProfileAddress',
     'AulaProfilePicture',
     'AulaToken',
     'AulaWidget',
@@ -105,4 +106,7 @@ __all__ = [
     'NotificationEventType',
     'NotificationType',
     'AULA_NOTIFICATION_TYPES',
+
+    'AulaWeeklyNewsletter',
+    'AulaWeeklyNewsletters',
 ]

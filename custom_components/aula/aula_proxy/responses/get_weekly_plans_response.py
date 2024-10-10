@@ -1,23 +1,22 @@
 import datetime
 from typing import List, TypedDict
 
-class GetWeeklyPlansDailyTask(TypedDict):
+class AulaGetWeeklyPlansDailyTask(TypedDict):
     id: int
     type: str
     author: str
     group: str
     pill: str
     content: str
-    editUrl: str
 
-class GetWeeklyPlansDailyPlan(TypedDict):
+class AulaGetWeeklyPlansDailyPlan(TypedDict):
     date: str
-    tasks: List[GetWeeklyPlansDailyTask]
+    tasks: List[AulaGetWeeklyPlansDailyTask]
 
-class GetWeeklyPlansResponse(TypedDict):
+class AulaGetWeeklyPlansResponse(TypedDict):
     id: int
     name: str
     unilogin: str
     from_date: datetime.date
     to_date: datetime.date
-    weekPlan: List[GetWeeklyPlansDailyPlan]
+    weekPlan: List[AulaGetWeeklyPlansDailyPlan]

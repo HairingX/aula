@@ -9,31 +9,37 @@ import logging
 import pytz
 import requests
 
+
 from .aula_errors import ParseError, AulaCredentialError
 from .models.aula_notification_parser import AulaNotificationParser
 from .models.aula_profile_parser import AulaProfileParser
 from .models.aula_weekly_plan_parser import AulaWeeklyPlanParser
+# from .models.aula_weekly_newsletter_parser import AulaWeeklyNewsletterParser
 from .models.constants import AulaWidgetId
 from .models.module import *
 from .responses.get_daily_overview_response import AulaGetDailyOverviewResponse
+from .responses.get_events_by_profile_ids_and_resource_ids import AulaGetEventsByProfileIdsAndResourceIdsResponse
 from .responses.get_messages_for_thread_response import AulaGetMessagesForThreadResponse
 from .responses.get_message_threads_response import AulaGetMessageThreadsResponse
 from .responses.get_notifications_response import AulaGetNotificationsResponse
 from .responses.get_profile_context_response import AulaGetProfileContextResponse
-from .responses.get_weekly_plans_response import GetWeeklyPlansResponse
+from .responses.get_profiles_by_login_response import AulaGetProfilesByLoginResponse
+from .responses.get_weekly_plans_response import AulaGetWeeklyPlansResponse
+# from .responses.get_weekly_newsletter_response import AulaGetWeeklyNewsletterResponse
 from .const import (
     API,
     API_VERSION,
-    MIN_UDDANNELSE_API,
+    # MIN_UDDANNELSE_API,
+    # SYSTEMATIC_API,
+    # EASYIQ_API,
     MEEBOOK_API,
-    SYSTEMATIC_API,
-    EASYIQ_API,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 REQUEST_MAX_ATTEMPTS = 3
 """Maximum number of attempts for requests, when certain errors occurs, such as timeout."""
+TOKEN_EXPIRATION_TIME = timedelta(minutes=30)
 
 class AulaProxyClient:
     api_version:int = int(API_VERSION)
@@ -148,7 +154,7 @@ class AulaProxyClient:
             raise ParseError("Login form found multiple actions in the HTML response.")
         headers = {
             "Host": "broker.unilogin.dk",
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/112.0",
+            "User-Agent": self._get_user_agent(),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "da,en-US;q=0.7,en;q=0.3",
             "Content-Type": "application/x-www-form-urlencoded",
@@ -229,9 +235,10 @@ class AulaProxyClient:
             api_response = self._session.get(f"{self._apiurl}?method=profiles.getProfilesByLogin", verify=True)
             # _LOGGER.debug(f"Result from {api_response.url}: {api_response.text}")
             if api_response.status_code == HTTPStatus.OK:
+                api_responsedata:AulaGetProfilesByLoginResponse = api_response.json()
                 _LOGGER.debug(f"API success: v{self.api_version}")
                 try:
-                    profiles = AulaProfileParser.parse_profiles(api_response.json()["data"]["profiles"])
+                    profiles = AulaProfileParser.parse_profiles_response(api_responsedata)
                 except Exception as e:
                     _LOGGER.info(f"method=profiles.getProfilesByLogin response: {api_response}")
                     _LOGGER.error(f"Error parsing profiles: {e}")
@@ -322,10 +329,10 @@ class AulaProxyClient:
                 _LOGGER.error(f"Failed to retrieve calendar events for profileids: {inst_profile_ids}. Error: {response.status_code}/{response.reason} - {response.text}")
                 self._raise_error(response)
             return []
-        responsedata = response.json()
+        responsedata: AulaGetEventsByProfileIdsAndResourceIdsResponse = response.json()
         # _LOGGER.debug(f"method=presence.getDailyOverview response: {response}")
         try:
-            events = AulaCalendarParser.parse_calendar_events(responsedata["data"])
+            events = AulaCalendarParser.parse_calendar_event_response(responsedata)
         except Exception as e:
             _LOGGER.info(f"method=presence.getDailyOverview response: {responsedata}")
             _LOGGER.error(f"Error parsing daily overviews: {e}")
@@ -478,7 +485,8 @@ class AulaProxyClient:
         child_userids_as_str_list = list(set(str(child.user_id) for child in children))
         institution_profile_codes = list(set(child.institution_code for child in children))
 
-        token = self._get_token(AulaWidgetId.WEEKPLAN_PARENTS)
+        widgetid = AulaWidgetId.WEEKPLAN_PARENTS
+        token = self._get_token(widgetid)
         headers: Dict[str, str] = self._get_meebook_header(token)
         requesturl: str = f"{MEEBOOK_API}/relatedweekplan/all?currentWeekNumber={{weekno}}&userProfile=guardian&childFilter[]={str.join("&childFilter[]=",child_userids_as_str_list)}&institutionFilter[]={str.join("&institutionFilter[]=",institution_profile_codes)}"
 
@@ -496,11 +504,13 @@ class AulaProxyClient:
                     break
             if response == None or response.status_code != HTTPStatus.OK:
                 if response is not None:
+                    if response.status_code == HTTPStatus.UNAUTHORIZED:
+                        token = self._refresh_token(widgetid)
                     _LOGGER.error(f"Failed to retrieve notifications from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}")
                     if not first_run: continue
                     self._raise_error(response)
                 return []
-            responsedata: List[GetWeeklyPlansResponse] = response.json()
+            responsedata: List[AulaGetWeeklyPlansResponse] = response.json()
             # assign dates to the weekly plans - we need them later
             for respdata in responsedata:
                 respdata["from_date"] = from_date
@@ -512,234 +522,244 @@ class AulaProxyClient:
         return weeklyplans
 
 
-    #TODO: Not yet implemented, cannot test new parsing syntax
-    def get_weekly_newsletters(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
-        """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
-        _LOGGER.debug(f"Fetching weekly newsletters for {len(profiles)} profiles")
-        if len(profiles) == 0: return dict[str,str]()
-        userid = self._get_user_id(profiles)
-        children = self.flatten_children(profiles)
-        child_ids_as_str_list = set(str(child.id) for child in children)
-        childUserIds = ",".join(child_ids_as_str_list)
-        weekletters = dict[str, str]()
-        if self.has_widget(AulaWidgetId.MY_EDUCATION_WEEKLETTER) and not self.has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS):
-            token = self._get_token(AulaWidgetId.MY_EDUCATION_WEEKLETTER)
-            week_no_str = self._get_aula_week_formatted(timestamp)
-            get_payload = (f"/ugebrev?assuranceLevel=2&childFilter={childUserIds}&currentWeekNumber={week_no_str}&isMobileApp=false&placement=narrow&sessionUUID={userid}&userProfile=guardian")
-            response = requests.get(
-                MIN_UDDANNELSE_API + get_payload,
-                headers={"Authorization": token.bearer_token, "accept": "application/json"},
-                verify=True,
-            )
-            responsedata=response.json()
-            # _LOGGER.debug("newsletter status_code "+str(response.status_code))
-            # _LOGGER.debug("newsletter response "+str(response.text))
-            try:
-                for person in responsedata["personer"]:
-                    ugeplan = person["institutioner"][0]["ugebreve"][0]["indhold"]
-                    weekletters[person["first_name"]] = ugeplan
-            except:
-                _LOGGER.debug("Cannot fetch newsletter, so setting as empty")
-                _LOGGER.debug("newsletter response "+str(response.text))
+    # #TODO: Not yet implemented, cannot test new parsing syntax
+    # def get_weekly_newsletters(self, profiles: List[AulaProfile], from_datetime: datetime, to_datetime: datetime) -> List[AulaWeeklyNewsletter]:
+    #     """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
+    #     _LOGGER.debug(f"Fetching weekly newsletters for {len(profiles)} profiles from {from_datetime} to {to_datetime}")
+    #     if len(profiles) == 0: return []
+    #     if not self.has_widget(AulaWidgetId.MY_EDUCATION_WEEKLETTER): return []
+    #     if self.has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS): return []
+    #     userid = self._get_user_id(profiles)
+    #     children = self.flatten_children(profiles)
+    #     child_ids_as_str_list = set(str(child.id) for child in children)
 
-        _LOGGER.debug(f"Fetched weekly newsletters: {len(weekletters)}")
-        return weekletters
+    #     token = self._get_token(AulaWidgetId.MY_EDUCATION_WEEKLETTER)
+    #     headers: Dict[str, str] = self._get_myeducation_header(token)
+    #     requesturl: str = f"{MIN_UDDANNELSE_API}/ugebrev?assuranceLevel=2&childFilter={",".join(child_ids_as_str_list)}&currentWeekNumber={{weekno}}&isMobileApp=false&placement=narrow&sessionUUID={userid}&userProfile=guardian"
 
-    #TODO: Not yet implemented, cannot test new parsing syntax
-    def get_task_list(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
-        """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
-        _LOGGER.debug(f"Fetching task list for {len(profiles)} profiles")
-        if len(profiles) == 0: return dict[str,str]()
-        userid = self._get_user_id(profiles)
-        children = self.flatten_children(profiles)
-        child_ids_as_str_list = set(str(child.id) for child in children)
-        childUserIds = ",".join(child_ids_as_str_list)
-        result = dict[str, str]()
-        if self.has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS):
-            _LOGGER.debug("In the MU assignments flow")
-            token = self._get_token(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS)
-            week_no_str = self._get_aula_week_formatted(timestamp)
-            get_payload = f"/opgaveliste?assuranceLevel=2&childFilter={childUserIds}&currentWeekNumber={week_no_str}&isMobileApp=false&placement=narrow&sessionUUID={userid}&userProfile=guardian"
-            response = requests.get(
-                MIN_UDDANNELSE_API + get_payload,
-                headers={"Authorization": token.bearer_token, "accept": "application/json"},
-                verify=True,
-            )
-            responsedata = response.json()
-            _LOGGER.debug(f"MU assignments status_code {response.status_code}")
-            _LOGGER.debug(f"MU assignments response {response.text}")
+    #     response: Response|None = None
+    #     weekletters = list[AulaWeeklyNewsletter]()
+    #     from_datetime = from_datetime - timedelta(days=from_datetime.weekday()) #ensure it is a monday
+    #     from_date = from_datetime.date()
+    #     first_run = True
+    #     while from_datetime < to_datetime:
+    #         from_date = from_datetime.date()
+    #         weekno = self._get_aula_week_formatted(from_date)
+    #         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
+    #             response = self._session.get(requesturl.format(weekno=weekno), headers=headers, verify=True)
+    #             if not self._should_retry_request(response, attempt):
+    #                 break
+    #         if response == None or response.status_code != HTTPStatus.OK:
+    #             if response is not None:
+    #                 if response.status_code == HTTPStatus.UNAUTHORIZED:
+    #                     token = self._refresh_token(widgetid)
+    #                 _LOGGER.error(f"Failed to retrieve weekly newsletters from children: {child_ids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}")
+    #                 if not first_run: continue
+    #                 self._raise_error(response)
+    #             return []
+    #         responsedata: List[AulaGetWeeklyNewsletterResponse] = response.json()
+    #         # assign dates to the weekly plans - we need them later
+    #         for respdata in responsedata:
+    #             respdata["from_date"] = from_date
+    #             respdata["to_date"] = respdata["from_date"] + timedelta(days=6)
+    #         weekletters.extend(AulaWeeklyNewsletterParser.parse_weekly_newsletter_profiles(responsedata))
+    #         from_datetime += timedelta(weeks=1)
+    #         first_run = False
+    #     _LOGGER.debug(f"Fetched weekly newsletters: {len(weekletters)}")
+    #     return weekletters
 
-            for child in self.flatten_children(profiles):
-                first_name = child.first_name
-                _ugep = ""
-                for assignment in responsedata.json()["opgaver"]:
-                    _LOGGER.debug(f"i kuvertnavn split {assignment["kuvertnavn"].split()[0]}")
-                    _LOGGER.debug(f"first_name {first_name}")
-                    if assignment["kuvertnavn"].split()[0] == first_name:
-                        _ugep += f"<h2>{assignment["title"]}</h2>"
-                        _ugep += f"<h3>{assignment["kuvertnavn"]}</h3>"
-                        _ugep += f"Ugedag: {assignment["ugedag"]}<br>"
-                        _ugep += f"Type: {assignment["opgaveType"]}<br>"
-                        for h in assignment["hold"]:
-                            _ugep += f"Hold: {h["navn"]}<br>"
-                        try:
-                            _ugep += f"Forløb: {assignment["forloeb"]["navn"]}"
-                        except:
-                            _LOGGER.debug(f"Did not find forloeb key: {assignment}")
-                result[first_name] = _ugep
-                _LOGGER.debug(f"MU assignments result: {_ugep}")
-        _LOGGER.debug(f"Fetched task list: {len(result)}")
-        return result
+    # #TODO: Not yet implemented, cannot test new parsing syntax
+    # def get_task_list(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
+    #     """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
+    #     _LOGGER.debug(f"Fetching task list for {len(profiles)} profiles")
+    #     if len(profiles) == 0: return dict[str,str]()
+    #     userid = self._get_user_id(profiles)
+    #     children = self.flatten_children(profiles)
+    #     child_ids_as_str_list = set(str(child.id) for child in children)
+    #     childUserIds = ",".join(child_ids_as_str_list)
+    #     result = dict[str, str]()
+    #     if self.has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS):
+    #         _LOGGER.debug("In the MU assignments flow")
+    #         token = self._get_token(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS)
+    #         week_no_str = self._get_aula_week_formatted(timestamp)
+    #         get_payload = f"/opgaveliste?assuranceLevel=2&childFilter={childUserIds}&currentWeekNumber={week_no_str}&isMobileApp=false&placement=narrow&sessionUUID={userid}&userProfile=guardian"
+    #         response = requests.get(
+    #             MIN_UDDANNELSE_API + get_payload,
+    #             headers={"Authorization": token.bearer_token, "accept": "application/json"},
+    #             verify=True,
+    #         )
+    #         responsedata = response.json()
+    #         _LOGGER.debug(f"MU assignments status_code {response.status_code}")
+    #         _LOGGER.debug(f"MU assignments response {response.text}")
 
-    #TODO: Not yet implemented, cannot test new parsing syntax
-    def get_easyiq_weekplan(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
-        """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
-        _LOGGER.debug(f"Fetching easyiq weekplan for {len(profiles)} profiles")
-        if len(profiles) == 0: return dict[str,str]()
-        userid = self._get_user_id(profiles)
-        children = self.flatten_children(profiles)
-        institution_profile_codes = list(set(child.institution_code for child in children))
+    #         for child in self.flatten_children(profiles):
+    #             first_name = child.first_name
+    #             _ugep = ""
+    #             for assignment in responsedata.json()["opgaver"]:
+    #                 _LOGGER.debug(f"i kuvertnavn split {assignment["kuvertnavn"].split()[0]}")
+    #                 _LOGGER.debug(f"first_name {first_name}")
+    #                 if assignment["kuvertnavn"].split()[0] == first_name:
+    #                     _ugep += f"<h2>{assignment["title"]}</h2>"
+    #                     _ugep += f"<h3>{assignment["kuvertnavn"]}</h3>"
+    #                     _ugep += f"Ugedag: {assignment["ugedag"]}<br>"
+    #                     _ugep += f"Type: {assignment["opgaveType"]}<br>"
+    #                     for h in assignment["hold"]:
+    #                         _ugep += f"Hold: {h["navn"]}<br>"
+    #                     try:
+    #                         _ugep += f"Forløb: {assignment["forloeb"]["navn"]}"
+    #                     except:
+    #                         _LOGGER.debug(f"Did not find forloeb key: {assignment}")
+    #             result[first_name] = _ugep
+    #             _LOGGER.debug(f"MU assignments result: {_ugep}")
+    #     _LOGGER.debug(f"Fetched task list: {len(result)}")
+    #     return result
 
-        result = dict[str, str]()
-        if self.has_widget(AulaWidgetId.EASYIQ_WEEKPLAN):
-            _LOGGER.debug("In the EasyIQ flow")
-            token = self._get_token(AulaWidgetId.EASYIQ_WEEKPLAN)
-            csrf_token = self._session.cookies.get_dict()["Csrfp-Token"]
+    # #TODO: Not yet implemented, cannot test new parsing syntax
+    # def get_easyiq_weekplan(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
+    #     """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
+    #     _LOGGER.debug(f"Fetching easyiq weekplan for {len(profiles)} profiles")
+    #     if len(profiles) == 0: return dict[str,str]()
+    #     userid = self._get_user_id(profiles)
+    #     children = self.flatten_children(profiles)
+    #     institution_profile_codes = list(set(child.institution_code for child in children))
 
-            easyiq_headers = self._get_easyiq_header(token, institution_profile_codes[0], csrf_token)
+    #     result = dict[str, str]()
+    #     if self.has_widget(AulaWidgetId.EASYIQ_WEEKPLAN):
+    #         _LOGGER.debug("In the EasyIQ flow")
+    #         token = self._get_token(AulaWidgetId.EASYIQ_WEEKPLAN)
+    #         csrf_token = self._session.cookies.get_dict()["Csrfp-Token"]
 
-            week_no_str = self._get_aula_week_formatted(timestamp)
-            for child in children:
-                userid = child.user_id
-                first_name = child.first_name
+    #         easyiq_headers = self._get_easyiq_header(token, institution_profile_codes[0], csrf_token)
 
-                _LOGGER.debug("EasyIQ headers " + str(easyiq_headers))
-                post_data: Dict[str, Any] = {
-                    "sessionId": userid,
-                    "currentWeekNr": week_no_str,
-                    "userProfile": "guardian",
-                    "institutionFilter": institution_profile_codes,
-                    "childFilter": [userid],
-                }
-                _LOGGER.debug(f"EasyIQ post data {post_data}")
-                weekplans = requests.post(
-                    EASYIQ_API + "/weekplaninfo",
-                    json=post_data,
-                    headers=easyiq_headers,
-                    verify=True,
-                )
-                # _LOGGER.debug(
-                #    "EasyIQ Opgaver status_code " + str(weekplans.status_code)
-                # )
-                _LOGGER.debug(f"EasyIQ Opgaver response {weekplans.json()}")
-                _ugep = f"<h2>Uge {timestamp.isocalendar().week}</h2>"
-                    # + weekplans.json()["Weekplan"]["ActivityName"]
-                    # + weekplans.json()["Weekplan"]["WeekNo"]
-                # from datetime import datetime
+    #         week_no_str = self._get_aula_week_formatted(timestamp)
+    #         for child in children:
+    #             userid = child.user_id
+    #             first_name = child.first_name
 
-                for i in weekplans.json()["Events"]:
-                    if self._matches_datetime_format(i["start"], "%Y/%m/%d %H:%M"):
-                        _LOGGER.debug("No Event")
-                        start_datetime = datetime.strptime(i["start"], "%Y/%m/%d %H:%M")
-                        _LOGGER.debug(start_datetime)
-                        end_datetime = datetime.strptime(i["end"], "%Y/%m/%d %H:%M")
-                        if start_datetime.date() == end_datetime.date():
-                            formatted_day = self._get_weekday(start_datetime.strftime("%d %m %Y"))
-                            formatted_start = start_datetime.strftime(" %H:%M")
-                            formatted_end = end_datetime.strftime("- %H:%M")
-                            dresult = f"{formatted_day} {formatted_start} {formatted_end}"
-                        else:
-                            formatted_start = self._get_weekday(start_datetime.strftime("%d %m %Y"))
-                            formatted_end = self._get_weekday(end_datetime.strftime("%d %m %Y"))
-                            dresult = f"{formatted_start} {formatted_end}"
-                        _ugep += f"<br><b>{dresult}</b><br>"
-                        if i["itemType"] == "5":
-                            _ugep += f"<br><b>{i["title"]}</b><br>"
-                        else:
-                            _ugep += f"<br><b>{i["ownername"]}</b><br>"
-                        _ugep +=f"{i["description"]}<br>"
-                    else:
-                        _LOGGER.debug("None")
-                    result[first_name] = _ugep
-                _LOGGER.debug("EasyIQ result: " + str(_ugep))
-        _LOGGER.debug(f"Fetched easyiq weekplan: {len(result)}")
-        return result
+    #             _LOGGER.debug("EasyIQ headers " + str(easyiq_headers))
+    #             post_data: Dict[str, Any] = {
+    #                 "sessionId": userid,
+    #                 "currentWeekNr": week_no_str,
+    #                 "userProfile": "guardian",
+    #                 "institutionFilter": institution_profile_codes,
+    #                 "childFilter": [userid],
+    #             }
+    #             _LOGGER.debug(f"EasyIQ post data {post_data}")
+    #             weekplans = requests.post(
+    #                 EASYIQ_API + "/weekplaninfo",
+    #                 json=post_data,
+    #                 headers=easyiq_headers,
+    #                 verify=True,
+    #             )
+    #             # _LOGGER.debug(
+    #             #    "EasyIQ Opgaver status_code " + str(weekplans.status_code)
+    #             # )
+    #             _LOGGER.debug(f"EasyIQ Opgaver response {weekplans.json()}")
+    #             _ugep = f"<h2>Uge {timestamp.isocalendar().week}</h2>"
+    #                 # + weekplans.json()["Weekplan"]["ActivityName"]
+    #                 # + weekplans.json()["Weekplan"]["WeekNo"]
+    #             # from datetime import datetime
 
-    #TODO: Not yet implemented, cannot test new parsing syntax
-    def get_reminders(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
-        """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
-        _LOGGER.debug(f"Fetching reminders for {len(profiles)} profiles")
-        if len(profiles) == 0: return dict[str,str]()
-        children = self.flatten_children(profiles)
-        child_ids_as_str_list = list(set(str(child.id) for child in children))
-        institution_profile_codes = list(set(child.institution_code for child in children))
+    #             for i in weekplans.json()["Events"]:
+    #                 if self._matches_datetime_format(i["start"], "%Y/%m/%d %H:%M"):
+    #                     _LOGGER.debug("No Event")
+    #                     start_datetime = datetime.strptime(i["start"], "%Y/%m/%d %H:%M")
+    #                     _LOGGER.debug(start_datetime)
+    #                     end_datetime = datetime.strptime(i["end"], "%Y/%m/%d %H:%M")
+    #                     if start_datetime.date() == end_datetime.date():
+    #                         formatted_day = self._get_weekday(start_datetime.strftime("%d %m %Y"))
+    #                         formatted_start = start_datetime.strftime(" %H:%M")
+    #                         formatted_end = end_datetime.strftime("- %H:%M")
+    #                         dresult = f"{formatted_day} {formatted_start} {formatted_end}"
+    #                     else:
+    #                         formatted_start = self._get_weekday(start_datetime.strftime("%d %m %Y"))
+    #                         formatted_end = self._get_weekday(end_datetime.strftime("%d %m %Y"))
+    #                         dresult = f"{formatted_start} {formatted_end}"
+    #                     _ugep += f"<br><b>{dresult}</b><br>"
+    #                     if i["itemType"] == "5":
+    #                         _ugep += f"<br><b>{i["title"]}</b><br>"
+    #                     else:
+    #                         _ugep += f"<br><b>{i["ownername"]}</b><br>"
+    #                     _ugep +=f"{i["description"]}<br>"
+    #                 else:
+    #                     _LOGGER.debug("None")
+    #                 result[first_name] = _ugep
+    #             _LOGGER.debug("EasyIQ result: " + str(_ugep))
+    #     _LOGGER.debug(f"Fetched easyiq weekplan: {len(result)}")
+    #     return result
 
-        result = dict[str, str]()
-        if self.has_widget(AulaWidgetId.REMINDERS):
-            _LOGGER.debug("In the Huskelisten flow...")
-            token = self._get_token(AulaWidgetId.REMINDERS)
-            huskelisten_headers = self._get_aula_header(token)
+    # #TODO: Not yet implemented, cannot test new parsing syntax
+    # def get_reminders(self, profiles: List[AulaProfile], timestamp: datetime) -> Dict[str, str]:
+    #     """Returns a dictionary of firstname, html - planned to be rewritten, but cant test for now due to missing data"""
+    #     _LOGGER.debug(f"Fetching reminders for {len(profiles)} profiles")
+    #     if len(profiles) == 0: return dict[str,str]()
+    #     children = self.flatten_children(profiles)
+    #     child_ids_as_str_list = list(set(str(child.id) for child in children))
+    #     institution_profile_codes = list(set(child.institution_code for child in children))
 
-            children = "&children=".join(child_ids_as_str_list)
-            institutions = "&institutions=".join(institution_profile_codes)
-            delta = datetime.now() + timedelta(days=180)
-            From = datetime.now().strftime("%Y-%m-%d")
-            dueNoLaterThan = delta.strftime("%Y-%m-%d")
-            get_payload = f"/reminders/v1?children={children}&from={From}&dueNoLaterThan={dueNoLaterThan}&widgetVersion=1.10&userProfile=guardian&sessionId={self._username}&institutions={institutions}"
-            _LOGGER.debug(f"Huskelisten get_payload: {SYSTEMATIC_API}{get_payload}")
+    #     result = dict[str, str]()
+    #     if self.has_widget(AulaWidgetId.REMINDERS):
+    #         _LOGGER.debug("In the Huskelisten flow...")
+    #         token = self._get_token(AulaWidgetId.REMINDERS)
+    #         huskelisten_headers = self._get_aula_header(token)
 
-            reminder_personsdata: List[Dict[str,Any]] = []
-            #
-            mock_huskelisten:int|str = 0
-            #
-            if mock_huskelisten == 1: # type: ignore
-                _LOGGER.warning("Using mock data for Huskelisten.")
-                mock_huskelisten = '[{"userName":"Emilie efternavn","userId":164625,"courseReminders":[],"assignmentReminders":[],"teamReminders":[{"id":76169,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-11-29T23:00:00Z","teamId":65240,"teamName":"2A","reminderText":"Onsdagslektie: Matematikfessor.dk: Sænk skibet med plus.","createdBy":"Peter ","lastEditBy":"Peter ","subjectName":"Matematik"},{"id":76598,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-12-06T23:00:00Z","teamId":65240,"teamName":"2A","reminderText":"Julekalender på Skoledu.dk: I skal forsøge at løse dagens kalenderopgave. opgaven kan også godt løses dagen efter.","createdBy":"Peter ","lastEditBy":"Peter Riis","subjectName":"Matematik"},{"id":76599,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-12-13T23:00:00Z","teamId":65240,"teamName":"2A","reminderText":"Julekalender på Skoledu.dk: I skal forsøge at løse dagens kalenderopgave. opgaven kan også godt løses dagen efter.","createdBy":"Peter ","lastEditBy":"Peter ","subjectName":"Matematik"},{"id":76600,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-12-20T23:00:00Z","teamId":65240,"teamName":"2A","reminderText":"Julekalender på Skoledu.dk: I skal forsøge at løse dagens kalenderopgave. opgaven kan også godt løses dagen efter.","createdBy":"Peter Riis","lastEditBy":"Peter Riis","subjectName":"Matematik"}]},{"userName":"Karla","userId":77882,"courseReminders":[],"assignmentReminders":[{"id":0,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-12-08T11:00:00Z","courseId":297469,"teamNames":["5A","5B"],"teamIds":[65271,65258],"courseSubjects":[],"assignmentId":5027904,"assignmentText":"Skriv en novelle"}],"teamReminders":[{"id":76367,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-11-30T23:00:00Z","teamId":65258,"teamName":"5A","reminderText":"Læse resten af kap.1 fra Ternet Ninja ( kopiark) Læs det hele højt eller vælg et afsnit. ","createdBy":"Christina ","lastEditBy":"Christina ","subjectName":"Dansk"}]},{"userName":"Vega  ","userId":206597,"courseReminders":[],"assignmentReminders":[],"teamReminders":[]}]'
-                reminder_personsdata = json.loads(mock_huskelisten, strict=False)
-            else:
-                response = requests.get(
-                    SYSTEMATIC_API + get_payload,
-                    headers=huskelisten_headers,
-                    verify=True,
-                )
-                try:
-                    reminder_personsdata = json.loads(response.text, strict=False)
-                except:
-                    _LOGGER.error(
-                        "Could not parse the response from Huskelisten as json."
-                    )
-                # _LOGGER.debug("Huskelisten raw response: "+str(response.text))
+    #         children = "&children=".join(child_ids_as_str_list)
+    #         institutions = "&institutions=".join(institution_profile_codes)
+    #         delta = datetime.now() + timedelta(days=180)
+    #         From = datetime.now().strftime("%Y-%m-%d")
+    #         dueNoLaterThan = delta.strftime("%Y-%m-%d")
+    #         get_payload = f"/reminders/v1?children={children}&from={From}&dueNoLaterThan={dueNoLaterThan}&widgetVersion=1.10&userProfile=guardian&sessionId={self._username}&institutions={institutions}"
+    #         _LOGGER.debug(f"Huskelisten get_payload: {SYSTEMATIC_API}{get_payload}")
 
-            for persondata in reminder_personsdata:
-                name = persondata["userName"].split()[0]
-                _LOGGER.debug("Huskelisten for " + name)
-                huskel = ""
-                remindersdata = persondata["teamReminders"]
-                if len(remindersdata) > 0:
-                    for reminderdata in remindersdata:
-                        mytime = datetime.strptime(reminderdata["dueDate"], "%Y-%m-%dT%H:%M:%SZ")
-                        ftime = mytime.strftime("%A %d. %B")
-                        huskel += f"<h3>{ftime}</h3>"
-                        huskel += f"<b>{reminderdata["subjectName"]}</b><br>"
-                        huskel += f"af {reminderdata["createdBy"]}<br><br>"
-                        content = re.sub(r"([0-9]+)(\.)", r"\1\.", reminderdata["reminderText"])
-                        huskel += f"{content}<br><br>"
-                else:
-                    huskel += f"{name} har ingen påmindelser."
-                result[name] = huskel
-        _LOGGER.debug(f"Fetched reminders: {len(result)}")
-        return result
+    #         reminder_personsdata: List[Dict[str,Any]] = []
+    #         #
+    #         mock_huskelisten:int|str = 0
+    #         #
+    #         if mock_huskelisten == 1: # type: ignore
+    #             _LOGGER.warning("Using mock data for Huskelisten.")
+    #             mock_huskelisten = '[{"userName":"Emilie efternavn","userId":164625,"courseReminders":[],"assignmentReminders":[],"teamReminders":[{"id":76169,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-11-29T23:00:00Z","teamId":65240,"teamName":"2A","reminderText":"Onsdagslektie: Matematikfessor.dk: Sænk skibet med plus.","createdBy":"Peter ","lastEditBy":"Peter ","subjectName":"Matematik"},{"id":76598,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-12-06T23:00:00Z","teamId":65240,"teamName":"2A","reminderText":"Julekalender på Skoledu.dk: I skal forsøge at løse dagens kalenderopgave. opgaven kan også godt løses dagen efter.","createdBy":"Peter ","lastEditBy":"Peter Riis","subjectName":"Matematik"},{"id":76599,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-12-13T23:00:00Z","teamId":65240,"teamName":"2A","reminderText":"Julekalender på Skoledu.dk: I skal forsøge at løse dagens kalenderopgave. opgaven kan også godt løses dagen efter.","createdBy":"Peter ","lastEditBy":"Peter ","subjectName":"Matematik"},{"id":76600,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-12-20T23:00:00Z","teamId":65240,"teamName":"2A","reminderText":"Julekalender på Skoledu.dk: I skal forsøge at løse dagens kalenderopgave. opgaven kan også godt løses dagen efter.","createdBy":"Peter Riis","lastEditBy":"Peter Riis","subjectName":"Matematik"}]},{"userName":"Karla","userId":77882,"courseReminders":[],"assignmentReminders":[{"id":0,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-12-08T11:00:00Z","courseId":297469,"teamNames":["5A","5B"],"teamIds":[65271,65258],"courseSubjects":[],"assignmentId":5027904,"assignmentText":"Skriv en novelle"}],"teamReminders":[{"id":76367,"institutionName":"Holme Skole","institutionId":183,"dueDate":"2022-11-30T23:00:00Z","teamId":65258,"teamName":"5A","reminderText":"Læse resten af kap.1 fra Ternet Ninja ( kopiark) Læs det hele højt eller vælg et afsnit. ","createdBy":"Christina ","lastEditBy":"Christina ","subjectName":"Dansk"}]},{"userName":"Vega  ","userId":206597,"courseReminders":[],"assignmentReminders":[],"teamReminders":[]}]'
+    #             reminder_personsdata = json.loads(mock_huskelisten, strict=False)
+    #         else:
+    #             response = requests.get(
+    #                 SYSTEMATIC_API + get_payload,
+    #                 headers=huskelisten_headers,
+    #                 verify=True,
+    #             )
+    #             try:
+    #                 reminder_personsdata = json.loads(response.text, strict=False)
+    #             except:
+    #                 _LOGGER.error(
+    #                     "Could not parse the response from Huskelisten as json."
+    #                 )
+    #             # _LOGGER.debug("Huskelisten raw response: "+str(response.text))
 
+    #         for persondata in reminder_personsdata:
+    #             name = persondata["userName"].split()[0]
+    #             _LOGGER.debug("Huskelisten for " + name)
+    #             huskel = ""
+    #             remindersdata = persondata["teamReminders"]
+    #             if len(remindersdata) > 0:
+    #                 for reminderdata in remindersdata:
+    #                     mytime = datetime.strptime(reminderdata["dueDate"], "%Y-%m-%dT%H:%M:%SZ")
+    #                     ftime = mytime.strftime("%A %d. %B")
+    #                     huskel += f"<h3>{ftime}</h3>"
+    #                     huskel += f"<b>{reminderdata["subjectName"]}</b><br>"
+    #                     huskel += f"af {reminderdata["createdBy"]}<br><br>"
+    #                     content = re.sub(r"([0-9]+)(\.)", r"\1\.", reminderdata["reminderText"])
+    #                     huskel += f"{content}<br><br>"
+    #             else:
+    #                 huskel += f"{name} har ingen påmindelser."
+    #             result[name] = huskel
+    #     _LOGGER.debug(f"Fetched reminders: {len(result)}")
+    #     return result
 
+    def _refresh_token(self, widgetid:AulaWidgetId) -> AulaToken:
+        token = self._tokens.get(widgetid)
+        current_time = datetime.now(pytz.utc)
+        if token is not None and current_time - token.timestamp < timedelta(minutes=5):
+            _LOGGER.debug("Ignoring token refresh request to avoid refreshing too often for widget id: " + widgetid)
+            return token
 
-    def _get_token(self, widgetid:AulaWidgetId) -> AulaToken:
-        _LOGGER.debug(f"Requesting new token for widget {widgetid}")
-        if widgetid in self._tokens:
-            token = self._tokens[widgetid]
-            current_time = datetime.now(pytz.utc)
-            if current_time - token.timestamp < timedelta(minutes=1):
-                _LOGGER.debug("Reusing existing token for widget " + widgetid)
-                return token
         responsedata = self._session.get(f"{self._apiurl}?method=aulaToken.getAulaToken&widgetId={widgetid}", verify=True).json()
         data = responsedata["data"]
         token = AulaToken(
@@ -749,6 +769,16 @@ class AulaProxyClient:
         )
         self._tokens[widgetid] = token
         return token
+
+    def _get_token(self, widgetid:AulaWidgetId) -> AulaToken:
+        _LOGGER.debug(f"Requesting new token for widget {widgetid}")
+        if widgetid in self._tokens:
+            token = self._tokens[widgetid]
+            current_time = datetime.now(pytz.utc)
+            if current_time - token.timestamp < TOKEN_EXPIRATION_TIME:
+                _LOGGER.debug("Reusing existing token for widget " + widgetid)
+                return token
+        return self._refresh_token(widgetid)
 
     def _get_user_id(self, profiles: List[AulaProfile]) -> str:
         """Ensures that each profile in the provided list has a user_id by fetching it from the API."""
@@ -778,15 +808,30 @@ class AulaProxyClient:
     def _get_aula_api(self) -> str:
         return API + str(self.api_version)
 
+    def _get_user_agent(self) -> str:
+        # Using Firefox browser as of 2024-10 for requests, as Python somtimes are blocked from accessing websites
+        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0"
+
+    def _get_myeducation_header(self, token: AulaToken|None = None) -> Dict[str,str]:
+        result: Dict[str, str] = {
+            "user-agent": self._get_user_agent(),
+            "accept": "application/json"
+        }
+
+        if token:
+            result["authorization"] = token.bearer_token
+
+        return result
+
     def _get_meebook_header(self, token: AulaToken|None = None) -> Dict[str,str]:
         result: Dict[str, str] = {
+            "user-agent": self._get_user_agent(),
             "authority": "app.meebook.com",
             "accept": "application/json",
             "dnt": "1",
             "origin": "https://www.aula.dk",
             "referer": "https://www.aula.dk/",
             "sessionuuid": self._username,
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36",
             "x-version": "1.0",
         }
 
@@ -797,6 +842,7 @@ class AulaProxyClient:
 
     def _get_easyiq_header(self, token: AulaToken|None, institution_profile_code: str, csrf_token: str) -> Dict[str,str]:
         result: Dict[str, str] = {
+            "user-agent": self._get_user_agent(),
             "x-aula-institutionfilter": institution_profile_code,
             "x-aula-userprofile": "guardian",
             "accept": "application/json",
@@ -813,6 +859,7 @@ class AulaProxyClient:
 
     def _get_aula_header(self, token: AulaToken|None = None) -> Dict[str,str]:
         result: Dict[str, str] = {
+                "user-agent": self._get_user_agent(),
                 "Accept": "application/json, text/plain, */*",
                 "Accept-Encoding": "gzip, deflate, br",
                 "Accept-Language": "en-US,en;q=0.9,da;q=0.8",
@@ -821,7 +868,6 @@ class AulaProxyClient:
                 "Sec-Fetch-Dest": "empty",
                 "Sec-Fetch-Mode": "cors",
                 "Sec-Fetch-Site": "cross-site",
-                "User-Agent": "Mozilla/5.0 (X11; CrOS x86_64 15183.51.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
                 "zone": "Europe/Copenhagen",
             }
 

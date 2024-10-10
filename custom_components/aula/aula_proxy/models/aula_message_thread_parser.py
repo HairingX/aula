@@ -6,7 +6,6 @@ from ..utils.list_utils import list_without_none
 
 from .aula_message_thread_models import AulaMessage, AulaMessagePreview, AulaMessageText, AulaMessageThread, AulaThreadRecipient, AulaThreadRegardingChild
 from .aula_parser import AulaParser
-from .aula_profile_parser import AulaProfileParser
 
 class AulaMessageThreadParser(AulaParser):
 
@@ -31,7 +30,6 @@ class AulaMessageThreadParser(AulaParser):
         result = AulaThreadRegardingChild(
             display_name = AulaMessageThreadParser._parse_str(data.get("displayName")),
             profile_id = AulaMessageThreadParser._parse_int(data.get("profileId")),
-            profile_picture = AulaProfileParser.parse_picture(data.get("profilePicture")),
             short_name = AulaMessageThreadParser._parse_str(data.get("shortName")),
         )
         return result
@@ -53,17 +51,10 @@ class AulaMessageThreadParser(AulaParser):
     def parse_message(data: AulaMessageData | None) -> AulaMessage | None:
         if not data: raise ValueError()
         result = AulaMessage(
-            attachments = data.get("attachments", []),
             can_reply_to_message = AulaMessageThreadParser._parse_nullable_bool(data.get("canReplyToMessage")),
-            deleted_at = AulaMessageThreadParser._parse_nullable_datetime(data.get("deletedAt")),
             has_attachments = AulaMessageThreadParser._parse_nullable_bool(data.get("hasAttachments")),
             id = AulaMessageThreadParser._parse_str(data.get("id")),
-            inviter_name = AulaMessageThreadParser._parse_nullable_str(data.get("inviterName")),
-            leaver_names = AulaMessageThreadParser._parse_nullable_str(data.get("leaverNames")),
             message_type = AulaMessageThreadParser._parse_str(data.get("messageType")),
-            new_recipients = AulaMessageThreadParser.parse_message_contacts(data.get("newRecipients")),
-            original_recipients = AulaMessageThreadParser.parse_message_contacts(data.get("originalRecipients")),
-            pending_media = AulaMessageThreadParser._parse_nullable_bool(data.get("pendingMedia")),
             send_datetime = AulaMessageThreadParser._parse_datetime(data.get("sendDateTime")),
             sender = AulaMessageThreadParser.parse_message_contact(data.get("sender")),
             text = AulaMessageThreadParser.parse_message_text(data.get("text")),

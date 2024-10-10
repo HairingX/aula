@@ -36,7 +36,6 @@ class AulaAlbumNotification(AulaNotificationBase):
     institution_code: str
     institution_profile_id: int
     media_id: int
-    related_child_institution_profile_id: int
     related_institution: str
     NOTIFICATION_AREA:NotificationArea = NotificationArea.ALBUM
 
@@ -47,7 +46,6 @@ class AulaCalendarEventNotification(AulaNotificationBase):
     institution_code: str
     institution_profile_id: int
     is_all_day_event: bool
-    related_child_institution_profile_id: int
     start_datetime: datetime
     title: str
     NOTIFICATION_AREA:NotificationArea = NotificationArea.CALENDAR
@@ -55,11 +53,9 @@ class AulaCalendarEventNotification(AulaNotificationBase):
 @dataclass
 class AulaGalleryNotification(AulaNotificationBase):
     album_id: int
-    album_name: str
     institution_code: str
     institution_profile_id: int
     media_ids: List[int]
-    related_child_institution_profile_id: int
     related_institution: str
     NOTIFICATION_AREA:NotificationArea = NotificationArea.GALLERY
 
@@ -69,7 +65,6 @@ class AulaMessageNotification(AulaNotificationBase):
     institution_code: str
     institution_profile_id: int
     message_text: str
-    related_child_institution_profile_id: int
     related_institution: str
     sender_name: str
     thread_id: int

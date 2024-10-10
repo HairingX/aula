@@ -1,6 +1,6 @@
 from typing import TypedDict, List
 
-from .common_data import AulaStatusData, AulaProfilePictureData
+from .common_data import AulaStatusData
 
 class AulaMessageTextData(TypedDict):
     html: str
@@ -13,7 +13,6 @@ class AulaThreadRecipientData(TypedDict):
 class AulaThreadChildData(TypedDict):
     displayName: str
     profileId: int
-    profilePicture: AulaProfilePictureData
     shortName: str
 
 class AulaThreadLatestMessageData(TypedDict):
@@ -43,10 +42,7 @@ class AulaThreadsData(TypedDict):
     page: int
     threads: List[AulaThreadData]
 
-
 class AulaGetMessageThreadsResponse(TypedDict):
     data: AulaThreadsData
-    method: str
-    module: str
     status: AulaStatusData
     version: int

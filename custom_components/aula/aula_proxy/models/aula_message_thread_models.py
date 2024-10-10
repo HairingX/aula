@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, List, Optional
+from typing import List, Optional
 
-from .aula_profile_models import AulaProfilePicture
 
 class AulaMessageType(StrEnum):
     RECIPIENTS_ADDED= "RecipientsAdded"
@@ -25,15 +24,8 @@ class AulaMessage:
     id: str
     message_type: str
     send_datetime: datetime
-    attachments: Optional[List[Any]|None] = None
     can_reply_to_message: Optional[bool|None] = None
-    deleted_at: Optional[datetime|None] = None
     has_attachments: Optional[bool|None] = None
-    inviter_name: Optional[str|None] = None
-    leaver_names: Optional[str|None] = None
-    new_recipients: Optional[List[AulaThreadRecipient]|None] = None
-    original_recipients: Optional[List[AulaThreadRecipient]|None] = None
-    pending_media: Optional[bool|None] = None
     recipients: Optional[List[AulaThreadRecipient]|None] = None
     sender: Optional[AulaThreadRecipient|None] = None
     text: Optional[AulaMessageText|None] = None
@@ -49,7 +41,6 @@ class AulaThreadRegardingChild:
     display_name: str
     profile_id: int
     short_name: str
-    profile_picture: Optional[AulaProfilePicture|None] = None
 
 @dataclass
 class AulaMessageThread:

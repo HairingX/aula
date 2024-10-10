@@ -18,7 +18,6 @@ class AulaMessagesForThreadData(TypedDict):
     id: int
     institutionCode: str
     isArchived: bool
-    isThreadForwarded: bool
     lastReadMessageId: str
     marked: bool
     messages: List[AulaMessageData]
@@ -34,7 +33,5 @@ class AulaMessagesForThreadData(TypedDict):
 
 class AulaGetMessagesForThreadResponse(TypedDict):
     data: AulaMessagesForThreadData
-    method: str
-    module: str
     status: AulaStatusData
     version: int

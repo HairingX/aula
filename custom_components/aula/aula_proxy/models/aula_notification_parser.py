@@ -20,13 +20,11 @@ class AulaNotificationParser(AulaParser):
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
             triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
-
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
             end_datetime=AulaNotificationParser._parse_datetime(data.get("endTime")),
             event_id=AulaNotificationParser._parse_int(data.get("eventId")),
             is_all_day_event=AulaNotificationParser._parse_bool(data.get("isAllDayEvent")),
-            related_child_institution_profile_id=AulaNotificationParser._parse_int(data.get("relatedChildInstitutionProfileId")),
             start_datetime=AulaNotificationParser._parse_datetime(data.get("startTime")),
             title=AulaNotificationParser._parse_str(data.get("title")),
         )
@@ -42,12 +40,10 @@ class AulaNotificationParser(AulaParser):
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
             triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
-
             folder_id=AulaNotificationParser._parse_int(data.get("institutionCode")),
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
             message_text=AulaNotificationParser._parse_str(data.get("messageText")),
-            related_child_institution_profile_id=AulaNotificationParser._parse_int(data.get("relatedChildInstitutionProfileId")),
             related_institution=AulaNotificationParser._parse_str(data.get("relatedInstitution")),
             sender_name=AulaNotificationParser._parse_str(data.get("senderName")),
             thread_id=AulaNotificationParser._parse_int(data.get("threadId")),
@@ -64,12 +60,10 @@ class AulaNotificationParser(AulaParser):
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
             triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
-
             album_id=AulaNotificationParser._parse_int(data.get("albumId")),
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
             media_id=AulaNotificationParser._parse_int(data.get("mediaId")),
-            related_child_institution_profile_id=AulaNotificationParser._parse_int(data.get("relatedChildInstitutionProfileId")),
             related_institution=AulaNotificationParser._parse_str(data.get("relatedInstitution")),
         )
         return result
@@ -84,13 +78,10 @@ class AulaNotificationParser(AulaParser):
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
             triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
-
             album_id=AulaNotificationParser._parse_int(data.get("albumId")),
-            album_name=AulaNotificationParser._parse_str(data.get("albumName")),
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
             media_ids=AulaNotificationParser._parse_int_list(data.get("mediaIds")),
-            related_child_institution_profile_id=AulaNotificationParser._parse_int(data.get("relatedChildInstitutionProfileId")),
             related_institution=AulaNotificationParser._parse_str(data.get("relatedInstitution")),
         )
         return result
