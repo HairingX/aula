@@ -5,61 +5,27 @@
 
 This is a custom component for Home Assistant to integrate Aula.
 
-- Installable and updatable via HACS
-- UI config flow
-- School schedules as Home Assistant calendars
+Available entities:
+- Calendars:
+  - Events (Containing calendar events from aula, such as class rooms etc.)
+  - Weekly Plan (containing meebook weekly plan)
+- Sensors:
+  - Presence (Present/Not Present)
+  - Status (Detailed Presence, with state attribute on where the kid are on the school)
+  - Present Duration (Time between check-in and check-out)
+- Binary Sensors:
+  - Unread Calendar Event
+  - Unread Message (state attibutes with preview of the content and sender)
+  - Unread Gallery (photos/videos)
+
+
+Not yet implemented:
+
+_As i have no json from the requests for these, i cannot develop and test the functionality to a point where i can verify their functionality._
 - "Ugeplaner/Ugenoter" from "Min Uddannelse", "Meebook" and "EasyIQ"
 - "Opgaver" from "Min Uddannelse"
-- Messages - if there are unread messages, we turn a binary sensor on and populate it with the message details.
 - "Huskelisten" from "Systematic"
-- Use the builtin service to interact directly with Aulas API.
 
-  "Ugeplaner/ugenoter/huskelisten" are stored as sensor attributes. Can be rendered like:
-
-  ```yaml
-  {{ state_attr("sensor.hojelse_skole_emilie", "ugeplan") }}
-  ```
-
-  And visualized in your dashboard with the markdown card:
-
-  ```yaml
-  type: markdown
-  content: '{{ state_attr("sensor.hojelse_skole_emilie", "ugeplan") }}'
-  title: Ugeplan for Emilie
-  ```
-
-  Another example using vertical-stack and collapsable-cards:
-
-  ![image](https://user-images.githubusercontent.com/8055470/200306258-1c9e98ff-75d9-4111-994c-a69833e40c61.png)
-
-```yaml
-type: vertical-stack
-cards:
-  - type: custom:collapsable-cards
-    title: Ugeplan Emilie
-    cards:
-      - type: markdown
-        content: '{{ state_attr("sensor.hojelse_skole_emilie", "ugeplan") }}'
-  - type: custom:collapsable-cards
-    title: Ugeplan Emilie, næste uge
-    cards:
-      - type: markdown
-        content: '{{ state_attr("sensor.hojelse_skole_emilie", "ugeplan_next") }}'
-  - type: custom:collapsable-cards
-    title: Ugeplan Rasmus
-    cards:
-      - type: markdown
-        content: '{{ state_attr("sensor.hojelse_skole_rasmus", "ugeplan") }}'
-  - type: custom:collapsable-cards
-    title: Ugeplan Rasmus, næste uge
-    cards:
-      - type: markdown
-        content: '{{ state_attr("sensor.hojelse_skole_rasmus", "ugeplan_next") }}'
-```
-
-   ![image](https://user-images.githubusercontent.com/8055470/199254249-3bf441bc-7dce-4f5d-a809-d119d20a7b2b.png)
-
-- Lots of small fixes and optimizations
 
 ## Installation
 
