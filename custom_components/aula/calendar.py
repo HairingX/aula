@@ -119,7 +119,6 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
         description = ""
         start_datetime = event.start_datetime
         end_datetime = event.end_datetime
-
         location:str|None = None
         if event.primary_resource is not None:
             location = event.primary_resource.name
@@ -307,7 +306,10 @@ class AulaWeeklyPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ig
     def _create_calendar_event(self, weekplan: AulaWeeklyPlan, dailyplan: AulaDailyPlan, task: AulaDailyPlanTask) -> CalendarEvent:
         """Return a CalendarEvent from a API weekplan."""
         contentpart = task.content#.split("\n", 1)[0]
-        summary = contentpart#(contentpart[:73] + "...") if len(contentpart) > 75 else contentpart
+        summary = (contentpart[:73] + "...") if len(contentpart) > 75 else contentpart
+        summaryparts = summary.split("\n", 1)
+        summary = summaryparts[0]
+        if len(summaryparts) > 1: summary += " ..."
         description = task.content
         start_date = dailyplan.date
         end_date = start_date + timedelta(days=1)

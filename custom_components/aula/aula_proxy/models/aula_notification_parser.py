@@ -14,18 +14,18 @@ class AulaNotificationParser(AulaParser):
     def parse_calendar_event(data: AulaNotificationData | None) -> AulaCalendarEventNotification | None:
         if not data: return None
         result = AulaCalendarEventNotification(
-            expires=AulaNotificationParser._parse_datetime(data.get("expires")),
+            expires=AulaNotificationParser._parse_datetime(data.get("expires"), fix_timezone=True),
             notification_area=AulaNotificationParser._parse_str(data.get("notificationArea")),
             notification_event_type=AulaNotificationParser._parse_str(data.get("notificationEventType")),
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
-            triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
+            triggered=AulaNotificationParser._parse_datetime(data.get("triggered"), fix_timezone=True),
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
-            end_datetime=AulaNotificationParser._parse_datetime(data.get("endTime")),
+            end_datetime=AulaNotificationParser._parse_datetime(data.get("endTime"), fix_timezone=True),
             event_id=AulaNotificationParser._parse_int(data.get("eventId")),
             is_all_day_event=AulaNotificationParser._parse_bool(data.get("isAllDayEvent")),
-            start_datetime=AulaNotificationParser._parse_datetime(data.get("startTime")),
+            start_datetime=AulaNotificationParser._parse_datetime(data.get("startTime"), fix_timezone=True),
             title=AulaNotificationParser._parse_str(data.get("title")),
         )
         return result
@@ -34,12 +34,12 @@ class AulaNotificationParser(AulaParser):
     def parse_message(data: AulaNotificationData | None) -> AulaMessageNotification | None:
         if not data: return None
         result = AulaMessageNotification(
-            expires=AulaNotificationParser._parse_datetime(data.get("expires")),
+            expires=AulaNotificationParser._parse_datetime(data.get("expires"), fix_timezone=True),
             notification_area=AulaNotificationParser._parse_str(data.get("notificationArea")),
             notification_event_type=AulaNotificationParser._parse_str(data.get("notificationEventType")),
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
-            triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
+            triggered=AulaNotificationParser._parse_datetime(data.get("triggered"), fix_timezone=True),
             folder_id=AulaNotificationParser._parse_int(data.get("institutionCode")),
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
@@ -54,12 +54,12 @@ class AulaNotificationParser(AulaParser):
     def parse_post(data: AulaNotificationData | None) -> AulaPostNotification | None:
         if not data: return None
         result = AulaPostNotification(
-            expires=AulaNotificationParser._parse_datetime(data.get("expires")),
+            expires=AulaNotificationParser._parse_datetime(data.get("expires"), fix_timezone=True),
             notification_area=AulaNotificationParser._parse_str(data.get("notificationArea")),
             notification_event_type=AulaNotificationParser._parse_str(data.get("notificationEventType")),
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
-            triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
+            triggered=AulaNotificationParser._parse_datetime(data.get("triggered"), fix_timezone=True),
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
             title=AulaNotificationParser._parse_str(data.get("postTitle")),
@@ -70,12 +70,12 @@ class AulaNotificationParser(AulaParser):
     def parse_album(data: AulaNotificationData | None) -> AulaAlbumNotification | None:
         if not data: return None
         result = AulaAlbumNotification(
-            expires=AulaNotificationParser._parse_datetime(data.get("expires")),
+            expires=AulaNotificationParser._parse_datetime(data.get("expires"), fix_timezone=True),
             notification_area=AulaNotificationParser._parse_str(data.get("notificationArea")),
             notification_event_type=AulaNotificationParser._parse_str(data.get("notificationEventType")),
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
-            triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
+            triggered=AulaNotificationParser._parse_datetime(data.get("triggered"), fix_timezone=True),
             album_id=AulaNotificationParser._parse_int(data.get("albumId")),
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
@@ -88,12 +88,12 @@ class AulaNotificationParser(AulaParser):
     def parse_gallery(data: AulaNotificationData | None) -> AulaGalleryNotification | None:
         if not data: return None
         result = AulaGalleryNotification(
-            expires=AulaNotificationParser._parse_datetime(data.get("expires")),
+            expires=AulaNotificationParser._parse_datetime(data.get("expires"), fix_timezone=True),
             notification_area=AulaNotificationParser._parse_str(data.get("notificationArea")),
             notification_event_type=AulaNotificationParser._parse_str(data.get("notificationEventType")),
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
-            triggered=AulaNotificationParser._parse_datetime(data.get("triggered")),
+            triggered=AulaNotificationParser._parse_datetime(data.get("triggered"), fix_timezone=True),
             album_id=AulaNotificationParser._parse_int(data.get("albumId")),
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),

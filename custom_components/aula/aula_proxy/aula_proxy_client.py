@@ -300,13 +300,13 @@ class AulaProxyClient:
         return result
 
 
-    def get_calendar_events(self, profiles: List[AulaInstitutionProfile], start_date: datetime, end_date: datetime) -> List[AulaCalendarEvent]:
-        _LOGGER.debug(f"Fetching calendar events for {len(profiles)} profiles")
+    def get_calendar_events(self, profiles: List[AulaInstitutionProfile], start_datetime: datetime, end_datetime: datetime) -> List[AulaCalendarEvent]:
+        _LOGGER.debug(f"Fetching calendar events for {len(profiles)} profiles from {start_datetime} to {end_datetime}")
         if len(profiles) == 0: return []
         inst_profile_ids = list(set(profile.id for profile in profiles))
         csrf_token = self._session.cookies.get_dict()["Csrfp-Token"]
-        start = start_date.strftime("%Y-%m-%d 00:00:00.0000%:z")
-        end = end_date.strftime("%Y-%m-%d 00:00:00.0000%:z")
+        start = start_datetime.strftime("%Y-%m-%d 00:00:00.0000%:z")
+        end = end_datetime.strftime("%Y-%m-%d 00:00:00.0000%:z")
 
         headers: Dict[str, str] = {"csrfp-token": csrf_token, "content-type": "application/json"}
 
@@ -471,7 +471,7 @@ class AulaProxyClient:
             _LOGGER.info(f"method=messaging.getMessagesForThread response: {responsedata}")
             _LOGGER.error(f"Error parsing messages: {e}")
             raise
-        # _LOGGER.debug(f"get_notifications: {messages}")
+        # _LOGGER.debug(f"get_notifications: {notifications}")
         _LOGGER.debug(f"Fetched notifications: {len(notifications)}")
         return notifications
 

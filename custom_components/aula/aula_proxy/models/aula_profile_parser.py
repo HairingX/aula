@@ -104,7 +104,7 @@ class AulaProfileParser(AulaParser):
 
         start_datetime: datetime|None = None
         start_date = AulaProfileParser._parse_nullable_date(data.get("startDate"))
-        start_time = AulaProfileParser._parse_nullable_time(data.get("startTime"))
+        start_time = AulaProfileParser._parse_nullable_time(data.get("startTime"), fix_timezone=False)
         if start_date is not None:
             start_datetime = datetime(year=start_date.year, month=start_date.month, day=start_date.day)
             if start_time is not None:
@@ -112,7 +112,7 @@ class AulaProfileParser(AulaParser):
 
         end_datetime: datetime|None = None
         end_date = AulaProfileParser._parse_nullable_date(data.get("endDate"))
-        end_time = AulaProfileParser._parse_nullable_time(data.get("endTime"))
+        end_time = AulaProfileParser._parse_nullable_time(data.get("endTime"), fix_timezone=False)
         if end_date is not None:
             end_datetime = datetime(year=end_date.year, month=end_date.month, day=end_date.day)
             if end_time is not None:
@@ -132,10 +132,10 @@ class AulaProfileParser(AulaParser):
     def parse_daily_overview(data: AulaDailyOverviewData | None) -> AulaDailyOverview | None:
         if not data: return None
         result = AulaDailyOverview(
-            check_in_time = AulaProfileParser._parse_nullable_time(data.get("checkInTime")),
-            check_in_time_expected = AulaProfileParser._parse_nullable_time(data.get("entryTime")),
-            check_out_time = AulaProfileParser._parse_nullable_time(data.get("checkOutTime")),
-            check_out_time_expected = AulaProfileParser._parse_nullable_time(data.get("exitTime")),
+            check_in_time = AulaProfileParser._parse_nullable_time(data.get("checkInTime"), fix_timezone=False),
+            check_in_time_expected = AulaProfileParser._parse_nullable_time(data.get("entryTime"), fix_timezone=False),
+            check_out_time = AulaProfileParser._parse_nullable_time(data.get("checkOutTime"), fix_timezone=False),
+            check_out_time_expected = AulaProfileParser._parse_nullable_time(data.get("exitTime"), fix_timezone=False),
             comment = AulaProfileParser._parse_nullable_str(data.get("comment")),
             exit_with = AulaProfileParser._parse_nullable_str(data.get("exitWith")),
             id = AulaProfileParser._parse_int(data.get("id", 0)),

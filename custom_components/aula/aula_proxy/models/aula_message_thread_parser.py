@@ -55,7 +55,7 @@ class AulaMessageThreadParser(AulaParser):
             has_attachments = AulaMessageThreadParser._parse_nullable_bool(data.get("hasAttachments")),
             id = AulaMessageThreadParser._parse_str(data.get("id")),
             message_type = AulaMessageThreadParser._parse_str(data.get("messageType")),
-            send_datetime = AulaMessageThreadParser._parse_datetime(data.get("sendDateTime")),
+            send_datetime = AulaMessageThreadParser._parse_datetime(data.get("sendDateTime"), fix_timezone=False),
             sender = AulaMessageThreadParser.parse_message_contact(data.get("sender")),
             text = AulaMessageThreadParser.parse_message_text(data.get("text")),
         )
@@ -66,7 +66,7 @@ class AulaMessageThreadParser(AulaParser):
         if not data: raise ValueError()
         result = AulaMessagePreview(
             id = AulaMessageThreadParser._parse_str(data.get("id")),
-            send_datetime = AulaMessageThreadParser._parse_datetime(data.get("sendDateTime")),
+            send_datetime = AulaMessageThreadParser._parse_datetime(data.get("sendDateTime"), fix_timezone=False),
             text = AulaMessageThreadParser.parse_message_text(data.get("text")),
         )
         return result
@@ -98,7 +98,7 @@ class AulaMessageThreadParser(AulaParser):
             recipients = AulaMessageThreadParser.parse_message_contacts(data.get("recipients")),
             regarding_children = AulaMessageThreadParser.parse_message_thread_regarding_children(data.get("regardingChildren")),
             sensitive = data.get("sensitive") == True,
-            started_datetime = AulaMessageThreadParser._parse_datetime(data.get("startedTime")),
+            started_datetime = AulaMessageThreadParser._parse_datetime(data.get("startedTime"), fix_timezone=False),
             subject = AulaMessageThreadParser._parse_str(data.get("subject")),
         )
         return result

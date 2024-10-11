@@ -8,7 +8,7 @@ import logging
 from .entity import AulaEntityBase
 from .aula_data_coordinator import AulaDataCoordinator, AulaDataCoordinatorData
 from .aula_data import get_aula_data_coordinator
-from .aula_proxy.module import AulaMessageThread, AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaPostNotification
+from .aula_proxy.module import AulaMessageThread, AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaPostNotification, NotificationType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,18 +56,24 @@ class AulaUnreadCalendarEventBinarySensor(AulaEntityBase[None], BinarySensorEnti
         first: AulaCalendarEventNotification|None = None
         for notification in notifications:
             if  isinstance(notification, AulaCalendarEventNotification):
-                total += 1
-                if not first: first = notification
+                if notification.notification_type == NotificationType.BADGE:
+                    total += 1
+                if not first:
+                    first = notification
+                elif first.notification_type == NotificationType.BADGE and notification.notification_type == NotificationType.ALERT:
+                    first = notification
 
         self._attr_is_on = total > 0
         self._attr_icon = 'mdi:calendar-badge'
         attributes = dict[str, Any]()
         attributes["total"] = total
+        attributes["alert"] = False
         attributes["all_day"] = None
         attributes["end_datetime"] = None
         attributes["start_datetime"] = None
         attributes["title"] = None
         if first:
+            attributes["alert"] = first.notification_type == NotificationType.ALERT
             attributes["all_day"] = first.is_all_day_event
             attributes["end_datetime"] = first.end_datetime
             attributes["start_datetime"] = first.start_datetime
@@ -88,26 +94,35 @@ class AulaUnreadMessageBinarySensor(AulaEntityBase[None], BinarySensorEntity): #
             if not thread.read:
                 total += 1
                 if not first: first = thread
+                elif first.muted and not thread.muted: first = thread
 
         self._attr_is_on = first is not None
         self._attr_icon = 'mdi:message-badge'
         attributes = dict[str, Any]()
         attributes["total"] = total
         attributes["subject"] = None
-        attributes["timestamp"] = None
+        attributes["sensitive"] = False
+        attributes["muted"] = False
+        attributes["marked"] = False
         attributes["recipients"] = None
+        attributes["timestamp"] = None
         attributes["text"] = None
         if first is not None:
             attributes["subject"] = first.subject
+            attributes["sensitive"] = first.sensitive
+            attributes["muted"] = first.muted
+            attributes["marked"] = first.marked
             attributes["recipients"] = ", ".join(rec.answer_directly_name for rec in first.recipients)
-            if first.extra_recipients_count > 0:
-                attributes["recipients"] += f", +{first.extra_recipients_count}"
+            if first.extra_recipients_count > 0: attributes["recipients"] += f", +{first.extra_recipients_count}"
             latestmsg = first.latest_message
             if latestmsg is not None:
                 attributes["timestamp"] = latestmsg.send_datetime
                 text = latestmsg.text
                 html = None if text is None else text.html
                 attributes["text"] = html
+            if first.sensitive: #sensitive messages have no subject and text
+                attributes["subject"] = "Sensitive"
+                attributes["text"] = "This message is sensitive. Please log into Aula to read it."
         self._attr_extra_state_attributes = attributes
 
 class AulaUnreadPostBinarySensor(AulaEntityBase[None], BinarySensorEntity): # type: ignore
@@ -122,14 +137,20 @@ class AulaUnreadPostBinarySensor(AulaEntityBase[None], BinarySensorEntity): # ty
         first: AulaPostNotification|None = None
         for notification in notifications:
             if  isinstance(notification, AulaPostNotification):
-                total += 1
-                if not first: first = notification
+                if notification.notification_type == NotificationType.BADGE:
+                    total += 1
+                if not first:
+                    first = notification
+                elif first.notification_type == NotificationType.BADGE and notification.notification_type == NotificationType.ALERT:
+                    first = notification
 
         self._attr_is_on = total > 0
         self._attr_icon = 'mdi:bulletin-board'
         attributes = dict[str, Any]()
         attributes["total"] = total
+        attributes["alert"] = False
         attributes["title"] = None
         if first:
+            attributes["alert"] = first.notification_type == NotificationType.ALERT
             attributes["title"] = first.title
         self._attr_extra_state_attributes = attributes

@@ -1,7 +1,10 @@
 import datetime
 import re
+import logging
 from typing import Any, List, TypeVar
 from homeassistant.util.dt import now
+
+_LOGGER = logging.getLogger(__name__)
 
 class AulaParser:
     """
@@ -91,19 +94,19 @@ class AulaParser:
         return str(value)
 
     @staticmethod
-    def _parse_time(value: Any) -> datetime.time:
+    def _parse_time(value: Any, fix_timezone: bool) -> datetime.time:
         if value is None: return datetime.time.min
         if isinstance(value, datetime.time): return value
         result = datetime.time.fromisoformat(value)
-        AulaParser._fix_timezone(result)
+        if fix_timezone: return AulaParser._fix_timezone(result)
         return result
 
     @staticmethod
-    def _parse_nullable_time(value: Any) -> datetime.time | None:
+    def _parse_nullable_time(value: Any, fix_timezone: bool) -> datetime.time | None:
         if value is None: return None
         if isinstance(value, datetime.time): return value
         result = datetime.time.fromisoformat(value)
-        AulaParser._fix_timezone(result)
+        if fix_timezone: return AulaParser._fix_timezone(result)
         return result
 
     @staticmethod
@@ -119,20 +122,25 @@ class AulaParser:
         return datetime.date.fromisoformat(value)
 
     @staticmethod
-    def _parse_datetime(value: Any) -> datetime.datetime:
+    def _parse_datetime(value: Any, fix_timezone: bool) -> datetime.datetime:
+        """
+        args:
+        - value: the value to parse
+        - fix_timezone: whether to fix the timezone or not (Aula sometimes send timezone +00:00 for dates which has timezone corrected time)
+        """
         if value is None: return datetime.datetime.min
         if isinstance(value, datetime.datetime): return value
         result = datetime.datetime.fromisoformat(value)
-        AulaParser._fix_timezone(result)
-        return result
+        if fix_timezone: return AulaParser._fix_timezone(result)
+        return result.astimezone(now().tzinfo)
 
     @staticmethod
-    def _parse_nullable_datetime(value: Any) -> datetime.datetime | None:
+    def _parse_nullable_datetime(value: Any, fix_timezone: bool) -> datetime.datetime | None:
         if value is None: return None
         if isinstance(value, datetime.datetime): return value
         result = datetime.datetime.fromisoformat(value)
-        AulaParser._fix_timezone(result)
-        return result
+        if fix_timezone: return AulaParser._fix_timezone(result)
+        return result.astimezone(now().tzinfo)
 
     TIME_TYPE = TypeVar("TIME_TYPE", datetime.datetime, datetime.time)
     @staticmethod
@@ -142,6 +150,6 @@ class AulaParser:
         (assuming the HA instance is at same timezone as the Aula institution)
         """
         if isinstance(value, datetime.datetime):
-            return value.replace(tzinfo=now().tzinfo)
+            return now().replace(year=value.year, month=value.month, day=value.day, hour=value.hour, minute=value.minute, second=value.second, microsecond=value.microsecond)
         # value is datetime.time
-        return value.replace(tzinfo=now().tzinfo)
+        return now().time().replace(hour=value.hour, minute=value.minute, second=value.second, microsecond=value.microsecond)

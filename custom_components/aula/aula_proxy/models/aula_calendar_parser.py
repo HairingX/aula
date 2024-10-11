@@ -14,19 +14,19 @@ class AulaCalendarParser(AulaParser):
             all_day = AulaCalendarParser._parse_bool(data.get("allDay")),
             belongs_to_profiles = list(map(AulaCalendarParser._parse_int, data.get("belongsToProfiles", []))),
             belongs_to_resources = data.get("belongsToResources", []),
-            created_datetime = AulaCalendarParser._parse_datetime(data.get("createdDateTime")),
-            end_datetime = AulaCalendarParser._parse_datetime(data.get("endDateTime")),
+            created_datetime = AulaCalendarParser._parse_datetime(data.get("createdDateTime"), fix_timezone=False),
+            end_datetime = AulaCalendarParser._parse_datetime(data.get("endDateTime"), fix_timezone=False),
             has_attachments = AulaCalendarParser._parse_bool(data.get("hasAttachments")),
             id = AulaCalendarParser._parse_int(data.get("id")),
             requires_new_answer = AulaCalendarParser._parse_bool(data.get("requiresNewAnswer")),
             response_required = AulaCalendarParser._parse_bool(data.get("responseRequired")),
-            start_datetime = AulaCalendarParser._parse_datetime(data.get("startDateTime")),
+            start_datetime = AulaCalendarParser._parse_datetime(data.get("startDateTime"), fix_timezone=False),
             title = AulaCalendarParser._parse_str(data.get("title")),
             type = AulaCalendarParser._parse_str(data.get("type")),
             lesson = AulaCalendarParser.parse_calendar_event_lesson(data.get("lesson")),
             primary_resource = AulaCalendarParser.parse_calendar_event_resource(data.get("primaryResource")),
             repeating = AulaCalendarParser._parse_nullable_bool(data.get("repeating")),
-            response_deadline = AulaCalendarParser._parse_nullable_datetime(data.get("responseDeadline")),
+            response_deadline = AulaCalendarParser._parse_nullable_datetime(data.get("responseDeadline"), fix_timezone=False),
             response_status = AulaCalendarParser._parse_nullable_str(data.get("responseStatus")),
             time_slot = AulaCalendarParser.parse_calendar_event_time_slot(data.get("timeSlot")),
         )
@@ -90,8 +90,8 @@ class AulaCalendarParser(AulaParser):
     def parse_calendar_event_time_slot_entry_index(data: AulaTimeSlotIndexData | None) -> AulaCalendarEventTimeSlotEntryIndex | None:
         if not data: return None
         result = AulaCalendarEventTimeSlotEntryIndex(
-            start_datetime = AulaCalendarParser._parse_datetime(data.get("startTime")),
-            end_datetime = AulaCalendarParser._parse_datetime(data.get("endTime")),
+            start_datetime = AulaCalendarParser._parse_datetime(data.get("startTime"), fix_timezone=False),
+            end_datetime = AulaCalendarParser._parse_datetime(data.get("endTime"), fix_timezone=False),
         )
         return result
 
@@ -121,9 +121,9 @@ class AulaCalendarParser(AulaParser):
         if not data: return None
         result = AulaCalendarEventTimeSlotEntry(
             answers = AulaCalendarParser.parse_calendar_event_time_slot_entry_answers(data.get("answers", [])),
-            end_date = AulaCalendarParser._parse_datetime(data.get("endDate")),
+            end_date = AulaCalendarParser._parse_datetime(data.get("endDate"), fix_timezone=False),
             id = AulaCalendarParser._parse_int(data.get("id")),
-            start_date = AulaCalendarParser._parse_datetime(data.get("startDate")),
+            start_date = AulaCalendarParser._parse_datetime(data.get("startDate"), fix_timezone=False),
             time_slot_indexes = AulaCalendarParser.parse_calendar_event_time_slot_entry_indexes(data.get("timeSlotIndexes", [])),
         )
         return result
