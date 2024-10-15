@@ -106,8 +106,8 @@ class AulaBirthdayCalendar(AulaCalendarEntityBase, CalendarEntity): # type: igno
         return None
 
     def _create_calendar_event(self, event: AulaBirthdayEvent) -> CalendarEvent:
-        summary = event.full_name
         age = self._get_age(event)
+        summary = f"{event.full_name} turns {age} 🎁"
         description = f"Turns {age} year{"" if age <= 1 else "s"} old"
         start_date = self._get_event_start(event)
         end_date = start_date + timedelta(days=1)
