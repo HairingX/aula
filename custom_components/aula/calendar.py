@@ -16,6 +16,7 @@ from .aula_data_coordinator import AulaDataCoordinator
 from .aula_proxy.models.constants import AulaCalendarEventType
 from .aula_proxy.utils.list_utils import list_without_none
 from .aula_proxy.models.module import (
+    AulaBirthdayEvent,
     AulaChildProfile,
     AulaInstitutionProfile,
     AulaProfile,
@@ -34,7 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     data_coordinator = get_aula_data_coordinator(hass, entry)
     calendar_coordinator = get_aula_calendar_coordinator(hass, entry)
     await calendar_coordinator.async_config_entry_first_refresh()
-    entities: List[AulaEventCalendar|AulaWeeklyPlanCalendar] = []
+    entities: List[CalendarEntity] = []
     for child in data_coordinator.data.children:
         entities.append(AulaEventCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
     for profile in data_coordinator.data.profiles:
@@ -44,9 +45,88 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     if data_coordinator.weekly_plans_supported():
         for child in data_coordinator.data.children:
             entities.append(AulaWeeklyPlanCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
+            entities.append(AulaBirthdayCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
 
     # if data_coordinator.data
     async_add_entities(entities)
+
+class AulaBirthdayCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
+    """A calendar event entity."""
+    _event: CalendarEvent | None = None
+    _profile: AulaChildProfile
+    _institution: AulaInstitutionProfile
+    _data_coordinator: AulaDataCoordinator
+
+    def __init__(self, calendar_coordinator: AulaCalendarCoordinator, data_coordinator: AulaDataCoordinator, profile: AulaChildProfile, institution: AulaInstitutionProfile):
+        super().__init__(calendar_coordinator, name="birthdays")
+        self._data_coordinator = data_coordinator
+        self._profile = profile
+        first_name = profile.first_name
+        institution_name = institution.institution_name
+        self._attr_unique_id = f"{self._attr_unique_id}_{first_name}_{institution_name}"
+        self._attr_translation_placeholders = { "name": first_name, "institution": institution_name }
+
+    async def async_will_remove_from_hass(self):
+        await self.coordinator.async_remove_birthday_key(self._profile)
+        return await super().async_will_remove_from_hass()
+
+    async def async_added_to_hass(self):
+        await self.coordinator.async_add_birthday_key(self._profile)
+        return await super().async_added_to_hass()
+
+    def _handle_data_updated(self, data: AulaCalendarCoordinatorData) -> bool:
+        """Handle the update and return True if data has changed for the entity."""
+        if self._profile.id in data.updated_birthdays_for_listener_keys:
+            return True
+        return False
+
+    @property
+    def event(self) -> CalendarEvent | None:
+        """Return the next upcoming event."""
+        result = self._get_active_or_upcoming_event()
+        # _LOGGER.debug(f"event = {None if result is None else result.summary}")
+        return result
+
+    async def async_get_events(self, hass: HomeAssistant, start_date: datetime, end_date: datetime) -> List[CalendarEvent]:
+        """HA Get all events in a specific time frame."""
+        birthdays = await self.coordinator.get_birthdays_for_interval([self._profile], start_date, end_date)
+        events = list[CalendarEvent]()
+        for birthday in birthdays:
+            event = self._create_calendar_event(birthday)
+            if event: events.append(event)
+        return events
+
+    def _get_active_or_upcoming_event(self) -> CalendarEvent | None:
+        current_time = now()
+        birthdays = self.coordinator.get_birthdays(self._profile)
+        for birthday in birthdays:
+            if self._get_event_start(birthday) >= current_time.date():
+                calendar_event = self._create_calendar_event(birthday)
+                return calendar_event
+        return None
+
+    def _create_calendar_event(self, event: AulaBirthdayEvent) -> CalendarEvent:
+        summary = event.full_name
+        age = self._get_age(event)
+        description = f"Turns {age} year{"" if age <= 1 else "s"} old"
+        start_date = self._get_event_start(event)
+        end_date = start_date + timedelta(days=1)
+
+        return CalendarEvent(
+            uid=str(event.institution_profile_id),
+            summary=summary,
+            start=start_date,
+            end=end_date,
+            description=None if len(description.strip()) == 0 else description,
+        )
+
+    def _get_age(self, event: AulaBirthdayEvent) -> int:
+        """Return the age of the child."""
+        return now().year - event.birthday_date.year
+
+    def _get_event_start(self, event: AulaBirthdayEvent) -> date:
+        """Return the start date of the event."""
+        return event.birthday_date.replace(year=now().year)
 
 class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
     """A calendar event entity."""

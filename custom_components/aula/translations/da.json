@@ -96,11 +96,14 @@
       }
     },
     "calendar": {
+      "birthdays": {
+        "name": "Fødselsdage {name} {institution}"
+      },
       "events": {
         "name": "Begivenheder {name} {institution}"
       },
       "weekly_plan": {
-        "name": "Ugeplan {name} {institution}",
+        "name": "Ugeplaner {name} {institution}",
         "state_attributes": {
           "friday": {
             "name": "Fredag"

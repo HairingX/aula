@@ -11,6 +11,7 @@ import logging
 
 from .aula_proxy.models.module import (
     AulaInstitutionProfile,
+    AulaBirthdayEvent,
     AulaCalendarEvent,
     AulaChildProfile,
     AulaWeeklyPlan,
@@ -22,6 +23,7 @@ _LOGGER = logging.getLogger(__name__)
 
 @dataclass
 class AulaCalendarCoordinatorData:
+    updated_birthdays_for_listener_keys: List[int]
     updated_events_for_listener_keys: List[int]
     updated_weekly_plans_for_listener_keys: List[int]
 
@@ -32,15 +34,18 @@ class AulaCalendarCoordinatorMeta[T]:
     def __init__(self):
         self.keys = []
 
-DATA_UPDATE_INTERVAL = timedelta(hours=6)
+BIRTHDAYS_UPDATE_INTERVAL = timedelta(days=1)
+EVENTS_UPDATE_INTERVAL = timedelta(hours=6)
+WEEKLY_PLANS_UPDATE_INTERVAL = timedelta(hours=6)
 SYNC_EVENT_MAX_TIME = timedelta(weeks=2)
-SYNC_EVENT_Min_TIME = timedelta()
 
 class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]):
     """My custom coordinator."""
+    _birthdaymap: dict[int, List[AulaBirthdayEvent]]
     _weeklyplanmap: dict[int, List[AulaWeeklyPlan]]
     _eventmap: dict[int, List[AulaCalendarEvent]]
     _client: AulaClient
+    _birthday_listeners = dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]()
     _event_listeners = dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]]()
     _weekly_plan_listeners = dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]()
 
@@ -59,7 +64,9 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
             # being dispatched to listeners
             always_update=True
         )
+        self._birthdaymap = dict()
         self._eventmap = dict()
+        self._weeklyplanmap = dict()
         self._client = client
         self.device_id = device_id
         self.aula_version = client.aula_version
@@ -100,7 +107,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
                 # listening_ids = set(self.async_contexts())
 
                 # always retrieve profiles first
-                data = await self.hass.async_add_executor_job(self._fetch_data, self._event_listeners, self._weekly_plan_listeners)
+                data = await self.hass.async_add_executor_job(self._fetch_data, self._birthday_listeners, self._event_listeners, self._weekly_plan_listeners)
                 if isinstance(data, Exception):
                     raise data
                 return data
@@ -109,15 +116,18 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
             # and start a config flow with SOURCE_REAUTH (async_step_reauth)
             raise ConfigEntryAuthFailed from err
         except Exception as error:
-            if isinstance(error.args, str):
-                raise UpdateFailed(error.args)
+            if isinstance(error.args, str) and len(error.args) > 0:
+                raise UpdateFailed(error.args) from error
             else:
-                raise UpdateFailed(error)
+                raise UpdateFailed from error
 
-    def _fetch_data(self, eventlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]], weekplanlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]) -> AulaCalendarCoordinatorData|Exception:
+    def _fetch_data(self, birthdaylisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]], eventlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]], weekplanlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]) -> AulaCalendarCoordinatorData|Exception:
         try:
             logindata = self._client.login()
             self.aula_version = logindata.api_version
+
+            new_birthdaymap, new_birtyday_keys = self._fetch_birthdays(birthdaylisteners)
+            self._birthdaymap = new_birthdaymap
 
             new_eventmap, new_event_keys = self._fetch_events(eventlisteners)
             self._eventmap = new_eventmap
@@ -126,6 +136,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
             self._weeklyplanmap = new_weeklyplanmap
 
             data = AulaCalendarCoordinatorData(
+                updated_birthdays_for_listener_keys= new_birtyday_keys,
                 updated_events_for_listener_keys = new_event_keys,
                 updated_weekly_plans_for_listener_keys = new_weeklyplan_keys
             )
@@ -146,6 +157,55 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
             return ex
         # _LOGGER.debug(f"Coordinator fetched data: {data}")
         return data
+
+
+    #region Birthdays
+
+    async def get_birthdays_for_interval(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaBirthdayEvent]:
+        return await self.hass.async_add_executor_job(self._client.get_birthday_events, profiles, start_datetime, end_datetime)
+
+    def get_birthdays(self, profile: AulaChildProfile) -> List[AulaBirthdayEvent]:
+        key = profile.id
+        if key not in self._birthday_listeners:
+            raise KeyError(f"Listener not found for the birthday key. Ensure you add the key when component is added to HASS (async_add_birthday_key), and remove when component is removed from HASS (async_remove_birthday_key)")
+        return self._birthdaymap.get(key, [])
+
+    async def async_add_birthday_key(self, profile: AulaChildProfile) -> None:
+        id = profile.id
+        meta = self._birthday_listeners.setdefault(id, AulaCalendarCoordinatorMeta[AulaChildProfile]())
+        _LOGGER.debug(f"async_add_birthday_key {id}")
+        meta.keys.append(profile)
+        self._birthdaymap.setdefault(id, [])
+        await self.async_refresh()
+
+    async def async_remove_birthday_key(self, profile: AulaChildProfile) -> None:
+        id = profile.id
+        meta = self._birthday_listeners.get(id)
+        if meta is None: return
+        meta.keys.remove(profile)
+        _LOGGER.debug(f"async_remove_birthday_key {id}")
+        if len(meta.keys) == 0:
+            self._birthday_listeners.pop(id)
+            self._birthdaymap.pop(id)
+
+    def _fetch_birthdays(self, listeners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]):
+        request_data_profiles = list[AulaChildProfile]()
+        new_birthdaymap = dict[int, List[AulaBirthdayEvent]]()
+        for (id, meta) in listeners.items():
+            if meta.last_updated is None or meta.last_updated < now() - BIRTHDAYS_UPDATE_INTERVAL or meta.last_updated.date() < now().date():
+                request_data_profiles.append(meta.keys[0])
+            else: #not requesting, reuse cached data
+                new_birthdaymap[id] = self._birthdaymap.get(id, list[AulaBirthdayEvent]())
+
+        for profile in request_data_profiles:
+            #Batch fetching and then splitting birthdays across profiles is very difficult, so we fetch per institution
+            birthdays = self._client.get_birthday_events([profile], now(), now() + SYNC_EVENT_MAX_TIME)
+            _LOGGER.debug(f"Fetching birthdays for id: {profile.id}, got {len(birthdays)} birthdays")
+            new_birthdaymap[profile.id] = birthdays
+
+        return (new_birthdaymap, [inst.id for inst in request_data_profiles])
+
+    #endregion Birthdays
 
     #region Events
 
@@ -180,7 +240,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         request_data_institutions = list[AulaInstitutionProfile]()
         new_eventmap = dict[int, List[AulaCalendarEvent]]()
         for (id, meta) in listeners.items():
-            if meta.last_updated is None or meta.last_updated < now() - DATA_UPDATE_INTERVAL or meta.last_updated.date() < now().date():
+            if meta.last_updated is None or meta.last_updated < now() - EVENTS_UPDATE_INTERVAL or meta.last_updated.date() < now().date():
                 request_data_institutions.append(meta.keys[0])
             else: #not requesting, reuse cached data
                 new_eventmap[id] = self._eventmap.get(id, list[AulaCalendarEvent]())
@@ -226,7 +286,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         request_data_institutions = list[AulaChildProfile]()
         new_weeklyplanmap = dict[int, List[AulaWeeklyPlan]]()
         for (id, meta) in listeners.items():
-            if meta.last_updated is None or meta.last_updated < now() - DATA_UPDATE_INTERVAL or meta.last_updated.date() < now().date():
+            if meta.last_updated is None or meta.last_updated < now() - WEEKLY_PLANS_UPDATE_INTERVAL or meta.last_updated.date() < now().date():
                 request_data_institutions.append(meta.keys[0])
             else: #not requesting, reuse cached data
                 new_weeklyplanmap[id] = self._weeklyplanmap.get(id, list[AulaWeeklyPlan]())

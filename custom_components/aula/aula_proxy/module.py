@@ -1,5 +1,6 @@
 
 from .models.module import (
+    AulaBirthdayEvent,
     AulaCalendarEvent,
     AulaCalendarEventLesson,
     AulaCalendarEventLessonParticipant,
@@ -40,6 +41,8 @@ from .aula_proxy_client import AulaProxyClient
 
 __all__ = [
     #models
+    'AulaBirthdayEvent',
+
     'AulaCalendarEvent',
     'AulaCalendarEventLesson',
     'AulaCalendarEventLessonParticipant',

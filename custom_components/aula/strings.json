@@ -96,11 +96,14 @@
       }
     },
     "calendar": {
+      "birthdays": {
+        "name": "Birthdays {name} {institution}"
+      },
       "events": {
         "name": "Events {name} {institution}"
       },
       "weekly_plan": {
-        "name": "Weekly Plan {name} {institution}",
+        "name": "Weekly Plans {name} {institution}",
         "state_attributes": {
           "friday": {
             "name": "Friday"

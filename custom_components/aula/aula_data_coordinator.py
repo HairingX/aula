@@ -95,10 +95,10 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
             # and start a config flow with SOURCE_REAUTH (async_step_reauth)
             raise ConfigEntryAuthFailed from err
         except Exception as error:
-            if isinstance(error.args, str):
-                raise UpdateFailed(error.args)
+            if isinstance(error.args, str) and len(error.args) > 0:
+                raise UpdateFailed(error.args) from error
             else:
-                raise UpdateFailed(error)
+                raise UpdateFailed from error
 
     def weekly_plans_supported(self) -> bool:
         return self._client.has_widget(AulaWidgetId.WEEKPLAN_PARENTS)

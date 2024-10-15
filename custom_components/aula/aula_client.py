@@ -5,6 +5,7 @@ import logging
 from .const import API_VERSION
 from .aula_proxy.models.constants import AulaWidgetId
 from .aula_proxy.module import (
+        AulaBirthdayEvent,
         AulaCalendarEvent,
         AulaDailyOverview,
         AulaInstitutionProfile,
@@ -45,6 +46,9 @@ class AulaClient:
 
     def login(self) -> AulaLoginData:
         return self._proxy.login()
+
+    def get_birthday_events(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaBirthdayEvent]:
+        return self._proxy.get_birthday_events(profiles, start_datetime, end_datetime)
 
     def get_daily_overviews(self, profiles: List[AulaProfile]) -> List[AulaDailyOverview]:
         return self._proxy.get_daily_overviews(profiles)
