@@ -5,6 +5,7 @@ from ..responses.common_data import AulaProfilePictureData
 from ..responses.get_daily_overview_response import *
 from ..responses.get_profiles_by_login_response import *
 from ..responses.get_profile_context_response import *
+from ..responses.get_profile_master_data_response import *
 from ..utils.list_utils import list_without_none
 
 from .aula_parser import AulaParser
@@ -50,6 +51,7 @@ class AulaProfileParser(AulaParser):
             id = AulaProfileParser._parse_int(data.get("id")),
             institution_code = AulaProfileParser._parse_str(data.get("institutionCode")),
             institution_profile = AulaProfileParser.parse_institution(data.get("institutionProfile")),
+            main_group= AulaInstitutionGroup(id=0, name="", short_name=""), # this is assigned later, as it is not present in the data object
             name = AulaProfileParser._parse_str(data.get("name")),
             profile_id = AulaProfileParser._parse_int(data.get("profileId")),
             profile_picture = AulaProfileParser.parse_picture(data.get("profilePicture")),
@@ -150,6 +152,26 @@ class AulaProfileParser(AulaParser):
         return result
 
     @staticmethod
+    def parse_institution_group(data: AulaProfileMasterDataInstitutionGroupData | None) -> AulaInstitutionGroup | None:
+        if not data: return None
+        result = AulaInstitutionGroup(
+            id = AulaProfileParser._parse_int(data.get("id")),
+            name = AulaProfileParser._parse_str(data.get("name")),
+            short_name = AulaProfileParser._parse_str(data.get("shortName")),
+        )
+        return result
+
+    @staticmethod
+    def parse_profile_relation(data: AulaProfileMasterDataRelationData | None) -> AulaProfileRelation | None:
+        if not data: return None
+        inst_group = AulaProfileParser.parse_institution_group(data.get("mainGroup"))
+        result = AulaProfileRelation(
+            child_id = AulaProfileParser._parse_int(data.get("id")),
+            main_group = inst_group if inst_group else AulaInstitutionGroup(id=0, name="", short_name=""),
+        )
+        return result
+
+    @staticmethod
     def parse_daily_overviews(data: List[AulaDailyOverviewData] | None) -> List[AulaDailyOverview]:
         if data is None: return []
         return list_without_none(map(AulaProfileParser.parse_daily_overview, data))
@@ -165,3 +187,19 @@ class AulaProfileParser(AulaParser):
         d = data.get("data")
         if not d: return []
         return AulaProfileParser.parse_profiles(d.get("profiles"))
+
+    @staticmethod
+    def parse_profile_master_data_response(data: AulaGetProfileMasterDataResponse | None) -> List[AulaProfileRelation]:
+        if not data: return []
+        d = data.get("data")
+        if not d: return []
+        institution_profiles = d.get("institutionProfiles")
+        if not institution_profiles: return []
+        result = list[AulaProfileRelation]()
+        for institution_profile in institution_profiles:
+            relations = institution_profile.get("relations")
+            if not relations: continue
+            for relation in relations:
+                relation = AulaProfileParser.parse_profile_relation(relation)
+                if relation: result.append(relation)
+        return result

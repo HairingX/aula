@@ -42,11 +42,13 @@ from .aula_notication_models import(
 from .aula_profile_models import (
     AulaChildProfile,
     AulaDailyOverview,
+    AulaInstitutionGroup,
     AulaInstitutionProfile,
     AulaLocation,
     AulaLoginData,
     AulaProfile,
     AulaProfilePicture,
+    AulaProfileRelation,
     AulaToken,
     AulaWidget,
 )
@@ -106,11 +108,13 @@ __all__ = [
     #profile
     'AulaChildProfile',
     'AulaDailyOverview',
+    'AulaInstitutionGroup',
     'AulaInstitutionProfile',
     'AulaLocation',
     'AulaLoginData',
     'AulaProfile',
     'AulaProfilePicture',
+    'AulaProfileRelation',
     'AulaToken',
     'AulaWidget',
     #weekly_newsletter

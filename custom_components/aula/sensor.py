@@ -31,11 +31,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class AulaStatusSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: ignore
     _attr_device_class = SensorDeviceClass.ENUM
 
-    def __init__(self, coordinator: AulaDataCoordinator, child: AulaChildProfile) -> None:
-        super().__init__(coordinator, context=child, name="status")
+    def __init__(self, coordinator: AulaDataCoordinator, profile: AulaChildProfile) -> None:
+        super().__init__(coordinator, context=profile, name="status")
         self._attr_options = [str(val) for val in StateMetaParser.state_options]
-        first_name = child.first_name
-        institution_name = child.institution_profile.institution_name
+        self._profile = profile
+        first_name = profile.first_name
+        institution_name = profile.institution_profile.institution_name
         self._attr_unique_id = f"{self._attr_unique_id}_{first_name}_{institution_name}"
         self._attr_translation_placeholders = { "name": first_name, "institution": institution_name }
         self._init_data()
@@ -59,6 +60,7 @@ class AulaStatusSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: 
         attributes["location_description"] = None
         attributes["location_icon"] = None
         attributes["location_name"] = None
+        attributes["main_group"] = self._profile.main_group.name
 
         if daily_overview is not None:
             self._attr_native_value = str(daily_overview.status)
@@ -79,11 +81,12 @@ class AulaStatusSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: 
 class AulaPresenceSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type: ignore
     _attr_device_class = SensorDeviceClass.ENUM
 
-    def __init__(self, coordinator: AulaDataCoordinator, child: AulaChildProfile) -> None:
-        super().__init__(coordinator, context=child, name="presence")
+    def __init__(self, coordinator: AulaDataCoordinator, profile: AulaChildProfile) -> None:
+        super().__init__(coordinator, context=profile, name="presence")
         self._attr_options = [str(val) for val in StateMetaParser.precense_options]
-        first_name = child.first_name
-        institution_name = child.institution_profile.institution_name
+        self._profile = profile
+        first_name = profile.first_name
+        institution_name = profile.institution_profile.institution_name
         self._attr_unique_id = f"{self._attr_unique_id}_{first_name}_{institution_name}"
         self._attr_translation_placeholders = { "name": first_name, "institution": institution_name }
         self._init_data()
@@ -104,6 +107,7 @@ class AulaPresenceSensor(AulaEntityBase[AulaChildProfile], SensorEntity): # type
         attributes["check_out_time_expected"] = None
         attributes["exit_with"] = None
         attributes["institution_name"] = None
+        attributes["main_group"] = self._profile.main_group.name
 
         if daily_overview is not None:
             statemeta = StateMetaParser.parse_presence(daily_overview.status)
@@ -122,10 +126,11 @@ class AulaPresenceDurationSensor(AulaEntityBase[AulaChildProfile], SensorEntity)
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
 
-    def __init__(self, coordinator: AulaDataCoordinator, child: AulaChildProfile) -> None:
-        super().__init__(coordinator, name="presence_duration", context=child)
-        first_name = child.first_name
-        institution_name = child.institution_profile.institution_name
+    def __init__(self, coordinator: AulaDataCoordinator, profile: AulaChildProfile) -> None:
+        super().__init__(coordinator, name="presence_duration", context=profile)
+        self._profile = profile
+        first_name = profile.first_name
+        institution_name = profile.institution_profile.institution_name
         self._attr_unique_id = f"{self._attr_unique_id}_{first_name}_{institution_name}"
         self._attr_translation_placeholders = { "name": first_name, "institution": institution_name }
         self._init_data()
@@ -142,6 +147,7 @@ class AulaPresenceDurationSensor(AulaEntityBase[AulaChildProfile], SensorEntity)
         self._attr_available = daily_overview is not None
         attributes["check_in_time"] = None
         attributes["check_out_time"] = None
+        attributes["main_group"] = self._profile.main_group.name
 
         if daily_overview is not None:
             statemeta = StateMetaParser.parse_presencetimer(daily_overview.status)

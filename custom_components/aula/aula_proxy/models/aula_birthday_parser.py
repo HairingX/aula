@@ -15,6 +15,7 @@ class AulaBirthdayParser(AulaParser):
             birthday_date = AulaBirthdayParser._parse_date(data.get("birthday")),
             institution_code = AulaBirthdayParser._parse_str(data.get("institutionCode")),
             full_name = AulaBirthdayParser._parse_str(data.get("name")),
+            main_group_name = AulaBirthdayParser._parse_str(data.get("mainGroupName")),
         )
 
         return result

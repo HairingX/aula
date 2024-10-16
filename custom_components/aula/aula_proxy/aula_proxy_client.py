@@ -19,6 +19,7 @@ from .responses.get_messages_for_thread_response import AulaGetMessagesForThread
 from .responses.get_message_threads_response import AulaGetMessageThreadsResponse
 from .responses.get_notifications_response import AulaGetNotificationsResponse
 from .responses.get_profile_context_response import AulaGetProfileContextResponse
+from .responses.get_profile_master_data_response import AulaGetProfileMasterDataResponse
 from .responses.get_profiles_by_login_response import AulaGetProfilesByLoginResponse
 from .responses.get_weekly_plans_response import AulaGetWeeklyPlansResponse
 from .responses.get_birthday_events_for_institutions import AulaGetBirthdayEventsForInstitutionsResponse
@@ -260,8 +261,10 @@ class AulaProxyClient:
 
         widgets: List[AulaWidget] = []
         if len(profiles) > 0:
-            responsedata: AulaGetProfileContextResponse = self._session.get(f"{self._apiurl}?method=profiles.getProfileContext&portalrole=guardian",verify=True,).json()
-            data = responsedata["data"]
+            # PROFILE CONTEXT (widgets & set user ids on profiles and children)
+            response =  self._session.get(f"{self._apiurl}?method=profiles.getProfileContext&portalrole=guardian",verify=True)
+            responsedata_context: AulaGetProfileContextResponse = response.json()
+            data = responsedata_context["data"]
             #set user id on logged in profile
             userid = data["userId"]
             for profile in profiles:
@@ -278,11 +281,28 @@ class AulaProxyClient:
                             if child: child.user_id = childdata["userId"]
 
             #read widgets (used to identify supported features)
-            detected_widgetsdata = responsedata["data"]["pageConfiguration"]["widgetConfigurations"]
+            detected_widgetsdata = responsedata_context["data"]["pageConfiguration"]["widgetConfigurations"]
             try:
                 widgets = AulaProfileParser.parse_widgets([widgetconfdata["widget"] for widgetconfdata in detected_widgetsdata])
             except Exception as e:
-                _LOGGER.info(f"method=profiles.getProfileContext response: {responsedata}")
+                _LOGGER.info(f"method=profiles.getProfileContext response: {responsedata_context}")
+                _LOGGER.error(f"Error parsing widgets: {e}")
+
+        if len(profiles) > 0:
+            # PROFILE MASTER DATA (set master group on children)
+            inst_profile_ids = list(set(str(institution_profile.id) for profile in profiles for institution_profile in profile.institution_profiles))
+            response = self._session.get(f"{self._apiurl}?method=profiles.getProfileMasterData&instProfileIds[]={"&instProfileIds[]=".join(inst_profile_ids)}&fromAdministration=false",verify=True)
+            responsedata_masterdata: AulaGetProfileMasterDataResponse = response.json()
+            #set master group on children profiles
+            relations = AulaProfileParser.parse_profile_master_data_response(responsedata_masterdata)
+            children = dict((child.id, child) for child in self.flatten_children(profiles))
+
+            try:
+                for relation in relations:
+                    child = children.get(relation.child_id)
+                    if child: child.main_group = relation.main_group
+            except Exception as e:
+                _LOGGER.info(f"method=profiles.getProfileContext response: {responsedata_masterdata}")
                 _LOGGER.error(f"Error parsing widgets: {e}")
 
         result = AulaLoginData(
@@ -295,6 +315,7 @@ class AulaProxyClient:
         _LOGGER.debug(f"Login found {len(profiles)} profiles")
         _LOGGER.debug(f"Widgets found: {str.join(", ", [widget.widget_id for widget in widgets])}")
         return result
+
 
     def get_birthday_events(self, profiles: List[AulaChildProfile], start_datetime: datetime, end_datetime: datetime) -> List[AulaBirthdayEvent]:
         _LOGGER.debug(f"Fetching birthday events for {len(profiles)} profiles from {start_datetime} to {end_datetime}")

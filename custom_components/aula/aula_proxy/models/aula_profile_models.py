@@ -17,11 +17,23 @@ class AulaInstitutionProfile:
     metadata: Optional[str|None] = None
 
 @dataclass
+class AulaInstitutionGroup:
+    id: int
+    name: str
+    short_name: str
+
+@dataclass
+class AulaProfileRelation:
+    child_id: int
+    main_group: AulaInstitutionGroup
+
+@dataclass
 class AulaChildProfile:
     first_name: str
     id: int
     institution_code: str
     institution_profile: AulaInstitutionProfile
+    main_group: AulaInstitutionGroup
     name: str
     profile_id: int
     short_name: str
