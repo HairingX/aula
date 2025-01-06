@@ -84,8 +84,8 @@ class AulaClient:
     #         _LOGGER.warning("Multiple sources for weekplans is untested and might cause problems.")
 
     #     now = datetime.datetime.now() + datetime.timedelta(weeks=1)
-    #     thisweek = datetime.datetime.now().strftime("%Y-W%W")
-    #     nextweek = now.strftime("%Y-W%W")
+    #     thisweek = datetime.datetime.now().strftime("%Y-W%V")
+    #     nextweek = now.strftime("%Y-W%V")
     #     self._weekplan(thisweek, "this")
     #     self._weekplan(nextweek, "next")
     #     # _LOGGER.debug("End result of weekplan object: "+str(self.ug ep_attr))

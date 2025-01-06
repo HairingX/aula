@@ -961,7 +961,7 @@ class AulaProxyClient:
 
     @staticmethod
     def _get_aula_week_formatted(timestamp: datetime|date) -> str:
-        return timestamp.strftime("%Y-W%W")
+        return timestamp.strftime("%Y-W%V")
 
     @staticmethod
     def _is_last_attempt(attempt: int) -> bool:
