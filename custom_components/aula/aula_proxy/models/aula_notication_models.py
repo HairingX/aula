@@ -20,6 +20,7 @@ class NotificationArea(StrEnum):
     GALLERY = "Gallery"
     MESSAGES = "Messages"
     POSTS = "Posts"
+    PRESENCE = "Presence"
 
 @dataclass
 class AulaNotificationBase:
@@ -78,4 +79,20 @@ class AulaPostNotification(AulaNotificationBase):
     NOTIFICATION_AREA:NotificationArea = NotificationArea.POSTS
 
 
-AULA_NOTIFICATION_TYPES = Union[AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaMessageNotification, AulaPostNotification]
+@dataclass
+class AulaPresenceNotification(AulaNotificationBase):
+    end_date: datetime
+    institution_code: str
+    institution_profile_id: int
+    is_presence_times_required: bool
+    message_text: str
+    related_child_institution_profile_id: int
+    related_child_name: str
+    response_deadline: datetime
+    start_date: datetime
+    vacation_registration_response_id: int
+    vacation_request_name: str
+    NOTIFICATION_AREA:NotificationArea = NotificationArea.PRESENCE
+
+
+AULA_NOTIFICATION_TYPES = Union[AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaMessageNotification, AulaPostNotification, AulaPresenceNotification]

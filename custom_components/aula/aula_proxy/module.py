@@ -31,6 +31,7 @@ from .models.module import (
     AulaGalleryNotification,
     AulaMessageNotification,
     AulaPostNotification,
+    AulaPresenceNotification,
     NotificationType,
     AULA_NOTIFICATION_TYPES
 )
@@ -78,6 +79,7 @@ __all__ = [
     'AulaGalleryNotification',
     'AulaMessageNotification',
     'AulaPostNotification',
+    'AulaPresenceNotification',
     'NotificationType',
     'AULA_NOTIFICATION_TYPES',
 ]

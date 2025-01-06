@@ -8,7 +8,7 @@ import logging
 from .entity import AulaEntityBase
 from .aula_data_coordinator import AulaDataCoordinator, AulaDataCoordinatorData
 from .aula_data import get_aula_data_coordinator
-from .aula_proxy.module import AulaMessageThread, AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaPostNotification, NotificationType
+from .aula_proxy.module import AulaMessageThread, AulaAlbumNotification, AulaCalendarEventNotification, AulaGalleryNotification, AulaPostNotification, AulaPresenceNotification, NotificationType
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,6 +20,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities.append(AulaUnreadGalleryBinarySensor(coordinator))
     entities.append(AulaUnreadCalendarEventBinarySensor(coordinator))
     entities.append(AulaUnreadPostBinarySensor(coordinator))
+    entities.append(AulaUnreadPresenceBinarySensor(coordinator))
     async_add_entities(entities)
 
 
@@ -153,4 +154,40 @@ class AulaUnreadPostBinarySensor(AulaEntityBase[None], BinarySensorEntity): # ty
         if first:
             attributes["alert"] = first.notification_type == NotificationType.ALERT
             attributes["title"] = first.title
+        self._attr_extra_state_attributes = attributes
+
+class AulaUnreadPresenceBinarySensor(AulaEntityBase[None], BinarySensorEntity): # type: ignore
+    def __init__(self, coordinator: AulaDataCoordinator):
+        super().__init__(coordinator, name="unread_presence", context=None)
+        self._init_data()
+
+    def _set_values(self, data: AulaDataCoordinatorData, context:None) -> None:
+        self._attr_is_on = False
+        notifications = data.notifications
+        total = 0
+        first: AulaPresenceNotification|None = None
+        for notification in notifications:
+            if  isinstance(notification, AulaPresenceNotification):
+                if notification.notification_type == NotificationType.BADGE:
+                    total += 1
+                if not first:
+                    first = notification
+                elif first.notification_type == NotificationType.BADGE and notification.notification_type == NotificationType.ALERT:
+                    first = notification
+
+        self._attr_is_on = total > 0
+        self._attr_icon = 'mdi:bulletin-board'
+        attributes = dict[str, Any]()
+        attributes["total"] = total
+        attributes["alert"] = False
+        attributes["title"] = None
+        attributes["text"] = None
+        attributes["start_date"] = None
+        attributes["end_date"] = None
+        if first:
+            attributes["alert"] = first.notification_type == NotificationType.ALERT
+            attributes["title"] = first.vacation_request_name
+            attributes["text"] = first.message_text
+            attributes["start_date"] = first.start_date
+            attributes["end_date"] = first.end_date
         self._attr_extra_state_attributes = attributes
