@@ -81,7 +81,7 @@ class AulaPostNotification(AulaNotificationBase):
 
 @dataclass
 class AulaPresenceNotification(AulaNotificationBase):
-    end_date: datetime
+    end_datetime: datetime
     institution_code: str
     institution_profile_id: int
     is_presence_times_required: bool
@@ -89,7 +89,7 @@ class AulaPresenceNotification(AulaNotificationBase):
     related_child_institution_profile_id: int
     related_child_name: str
     response_deadline: datetime
-    start_date: datetime
+    start_datetime: datetime
     vacation_registration_response_id: int
     vacation_request_name: str
     NOTIFICATION_AREA:NotificationArea = NotificationArea.PRESENCE

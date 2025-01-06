@@ -93,6 +93,26 @@
             "name": "Total"
           }
         }
+      },
+      "unread_presence": {
+        "name": "Ulæst Tilstedeværelse",
+        "state_attributes": {
+          "title": {
+            "name": "Titel"
+          },
+          "total": {
+            "name": "Total"
+          },
+          "text": {
+            "name": "Besked"
+          },
+          "start_datetime": {
+            "name": "Start"
+          },
+          "end_datetime": {
+            "name": "Slut"
+          }
+        }
       }
     },
     "calendar": {
