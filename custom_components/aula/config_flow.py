@@ -101,8 +101,8 @@ class AulaCustomConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         if config_entry is None: return self.async_abort(reason="missing_entry_data")
         config_data = config_entry.data.copy()
-        config_data[CONF_USERNAME] = self._username,
-        config_data[CONF_PASSWORD] = self._password,
+        config_data[CONF_USERNAME] = self._username
+        config_data[CONF_PASSWORD] = self._password
 
         return self.async_update_reload_and_abort(
             config_entry,
