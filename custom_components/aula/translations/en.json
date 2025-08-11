@@ -1,7 +1,8 @@
 {
   "config": {
     "abort": {
-      "missing_entry_data": "Entry data for the device could not be found."
+      "missing_entry_data": "Entry data for the device could not be found.",
+      "success": "Success."
     },
     "error": {
       "id_already_in_use": "ID is already in use. Please use a different ID.",

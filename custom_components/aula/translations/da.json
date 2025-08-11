@@ -1,7 +1,8 @@
 {
   "config": {
     "abort": {
-      "missing_entry_data": "Enhedsdata kunne ikke findes."
+      "missing_entry_data": "Enhedsdata kunne ikke findes.",
+      "success": "Succes."
     },
     "error": {
       "id_already_in_use": "ID er allerede i brug. Brug venligst et andet ID.",

@@ -108,7 +108,7 @@ class AulaCustomConfigFlow(ConfigFlow, domain=DOMAIN):
             config_entry,
             unique_id=config_entry.unique_id,
             data=config_data,
-            reason="reconfigure_successful",
+            reason="success",
         )
 
     async def _async_try_set_username_password(self, user_input:Dict[str, str]) -> Exception|AulaClient:
