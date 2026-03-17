@@ -35,8 +35,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     username = str(entry.data.get(CONF_USERNAME))
     password = str(entry.data.get(CONF_PASSWORD))
     client = AulaClient(username, password)
-    data_coordinator = AulaDataCoordinator(entry.title, hass, client)
-    calendar_coordinator = AulaCalendarCoordinator(entry.title, hass, client)
+    data_coordinator = AulaDataCoordinator(entry.title, hass, client, entry)
+    calendar_coordinator = AulaCalendarCoordinator(entry.title, hass, client, entry)
     hass_data: AulaHassData = {
         "username": username,
         "password": password,

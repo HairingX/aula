@@ -3,10 +3,11 @@ from datetime import timedelta
 import datetime
 from typing import Dict, List, TypeVar
 from homeassistant.util.dt import now
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-import async_timeout
+import asyncio
 import logging
 
 from .aula_proxy.models.module import (
@@ -49,20 +50,21 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
     _event_listeners = dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]]()
     _weekly_plan_listeners = dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]()
 
-    def __init__(self, device_id: str, hass: HomeAssistant, client: AulaClient):
+    def __init__(self, device_id: str, hass: HomeAssistant, client: AulaClient, config_entry: ConfigEntry):
         """Initialize my coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             # Name of the data. For logging purposes.
             name="calendar",
+            config_entry=config_entry,
             # Polling interval. Will only be polled if there are subscribers.
             # We poll often, but limit the data update with DATA_UPDATE_INTERVAL. We want data to refresh past midnight no matter the interval.
             update_interval=timedelta(minutes=10),
             # Set always_update to `False` if the data returned from the
             # api can be compared via `__eq__` to avoid duplicate updates
             # being dispatched to listeners
-            always_update=True
+            always_update=True,
         )
         self._birthdaymap = dict()
         self._eventmap = dict()
@@ -100,7 +102,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
 
             # Note: asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 # Grab active context variables to limit data required to be fetched from API
                 # Note: using context is not required if there is no need or ability to limit
                 # data retrieved from API.

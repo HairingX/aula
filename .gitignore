@@ -17,3 +17,5 @@ config/home-assistant_v2.db-wal
 skoleskema.json
 secrets.yml
 test_messages/
+.claude/settings.local.json
+config/.ha_run.lock

@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import List
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-import async_timeout
+import asyncio
 import logging
 
 from .aula_proxy.models.constants import AulaWidgetId
@@ -35,19 +36,20 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
 
     _client: AulaClient
 
-    def __init__(self, device_id: str, hass: HomeAssistant, client: AulaClient):
+    def __init__(self, device_id: str, hass: HomeAssistant, client: AulaClient, config_entry: ConfigEntry):
         """Initialize my coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             # Name of the data. For logging purposes.
             name="general",
+            config_entry=config_entry,
             # Polling interval. Will only be polled if there are subscribers.
             update_interval=timedelta(minutes=5),
             # Set always_update to `False` if the data returned from the
             # api can be compared via `__eq__` to avoid duplicate updates
             # being dispatched to listeners
-            always_update=True
+            always_update=True,
         )
         self._client = client
         self.device_id = device_id
@@ -79,7 +81,7 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
 
             # Note: asyncio.TimeoutError and aiohttp.ClientError are already
             # handled by the data update coordinator.
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 # Grab active context variables to limit data required to be fetched from API
                 # Note: using context is not required if there is no need or ability to limit
                 # data retrieved from API.

@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, Mapping, Optional
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, SOURCE_RECONFIGURE
 from homeassistant.const import CONF_ID, CONF_PASSWORD, CONF_USERNAME
 import voluptuous as vol
 
@@ -58,9 +58,7 @@ class AulaCustomConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reconfigure(self, user_input:Dict[str, str]) -> ConfigFlowResult:
         """After user has provided their ip, port and email. Try to connect and see if email is correct."""
-        #get the persisted data
-        config_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        if config_entry is None: return self.async_abort(reason="missing_entry_data")
+        config_entry = self._get_reconfigure_entry()
         data = config_entry.data
         #assign self properties from the persisted data
         self._id = data.get(CONF_ID, "")
@@ -71,9 +69,7 @@ class AulaCustomConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(self, user_input:Dict[str, str]) -> ConfigFlowResult:
         """When integration has indicated that reauthentication is needed."""
-        #get the persisted data
-        config_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        if config_entry is None: return self.async_abort(reason="missing_entry_data")
+        config_entry = self._get_reauth_entry()
         data = config_entry.data
         #assign self properties from the persisted data
         self._id = data.get(CONF_ID, "")
@@ -98,8 +94,10 @@ class AulaCustomConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_show_reconfigure(result)
 
         #valid data - save data
-        config_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        if config_entry is None: return self.async_abort(reason="missing_entry_data")
+        if self.source == SOURCE_RECONFIGURE:
+            config_entry = self._get_reconfigure_entry()
+        else:
+            config_entry = self._get_reauth_entry()
         config_data = config_entry.data.copy()
         config_data[CONF_USERNAME] = self._username
         config_data[CONF_PASSWORD] = self._password
