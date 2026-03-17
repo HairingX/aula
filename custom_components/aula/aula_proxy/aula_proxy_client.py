@@ -81,7 +81,7 @@ class AulaProxyClient:
         _LOGGER.debug(response.text)
         try:
             responsedata = response.json()
-        except:
+        except (json.JSONDecodeError, ValueError):
             responsedata = {"raw_response": response.text}
         return responsedata
 
@@ -519,8 +519,8 @@ class AulaProxyClient:
         try:
             notifications = AulaNotificationParser.parse_notification_response(responsedata)
         except Exception as e:
-            _LOGGER.info(f"method=messaging.getMessagesForThread response: {responsedata}")
-            _LOGGER.error(f"Error parsing messages: {e}")
+            _LOGGER.info(f"method=notifications.getNotificationsForActiveProfile response: {responsedata}")
+            _LOGGER.error(f"Error parsing notifications: {e}")
             raise
         # _LOGGER.debug(f"get_notifications: {notifications}")
         _LOGGER.debug(f"Fetched notifications: {len(notifications)}")

@@ -142,8 +142,8 @@ class AulaCustomConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_auth"
             elif isinstance(error, ParseError):
                 errors["base"] = "invalid_response"
-            elif isinstance(error.args, str):
-                errors["base"] = str(error.args)
+            elif error.args and isinstance(error.args[0], str):
+                errors["base"] = error.args[0]
             else:
                 errors["base"] = str(error)
 

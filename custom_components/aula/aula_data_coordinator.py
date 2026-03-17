@@ -97,8 +97,8 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
             # and start a config flow with SOURCE_REAUTH (async_step_reauth)
             raise ConfigEntryAuthFailed from err
         except Exception as error:
-            if isinstance(error.args, str) and len(error.args) > 0:
-                raise UpdateFailed(error.args) from error
+            if error.args and isinstance(error.args[0], str):
+                raise UpdateFailed(error.args[0]) from error
             else:
                 raise UpdateFailed from error
 
@@ -117,8 +117,8 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
     def assignments_supported(self) -> bool:
         return self._client.has_widget(AulaWidgetId.MY_EDUCATION_ASSIGNMENTS)
 
-    def _connection_check(self) -> Exception | None:
-        return self._client.connection_check()
+    def _connection_check(self) -> None:
+        self._client.connection_check()
 
     def _fetch_data(self) -> AulaDataCoordinatorData|Exception:
         try:
