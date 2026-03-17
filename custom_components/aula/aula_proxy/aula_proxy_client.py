@@ -43,7 +43,7 @@ class AulaProxyClient:
     api_version:int = int(API_VERSION)
 
     _login_result: AulaLoginData | None = None
-    _tokens = dict[AulaWidgetId, AulaToken]()
+    _tokens: dict[AulaWidgetId, AulaToken]
     _is_logged_in: bool = False
     _apiurl:str = ""
     _username:str = ""
@@ -54,6 +54,7 @@ class AulaProxyClient:
         self._username = username
         self._password = password
         self._session = requests.Session()
+        self._tokens = dict()
 
 
     def custom_api_call(self, uri:str, post_data:str|None) -> Dict[str,str]:
@@ -262,7 +263,8 @@ class AulaProxyClient:
         widgets: List[AulaWidget] = []
         if len(profiles) > 0:
             # PROFILE CONTEXT (widgets & set user ids on profiles and children)
-            response =  self._session.get(f"{self._apiurl}?method=profiles.getProfileContext&portalrole=guardian",verify=True)
+            api_method_context = "profiles.getProfileContext"
+            response =  self._session.get(f"{self._apiurl}?method={api_method_context}&portalrole=guardian",verify=True)
             responsedata_context: AulaGetProfileContextResponse = response.json()
             data = responsedata_context["data"]
             #set user id on logged in profile
@@ -285,13 +287,14 @@ class AulaProxyClient:
             try:
                 widgets = AulaProfileParser.parse_widgets([widgetconfdata["widget"] for widgetconfdata in detected_widgetsdata])
             except Exception as e:
-                _LOGGER.info(f"method=profiles.getProfileContext response: {responsedata_context}")
+                _LOGGER.info(f"method={api_method_context} response: {responsedata_context}")
                 _LOGGER.error(f"Error parsing widgets: {e}")
 
         if len(profiles) > 0:
             # PROFILE MASTER DATA (set master group on children)
+            api_method_masterdata = "profiles.getProfileMasterData"
             inst_profile_ids = list(set(str(institution_profile.id) for profile in profiles for institution_profile in profile.institution_profiles))
-            response = self._session.get(f"{self._apiurl}?method=profiles.getProfileMasterData&instProfileIds[]={"&instProfileIds[]=".join(inst_profile_ids)}&fromAdministration=false",verify=True)
+            response = self._session.get(f"{self._apiurl}?method={api_method_masterdata}&instProfileIds[]={"&instProfileIds[]=".join(inst_profile_ids)}&fromAdministration=false",verify=True)
             responsedata_masterdata: AulaGetProfileMasterDataResponse = response.json()
             #set master group on children profiles
             relations = AulaProfileParser.parse_profile_master_data_response(responsedata_masterdata)
@@ -302,8 +305,8 @@ class AulaProxyClient:
                     child = children.get(relation.child_id)
                     if child: child.main_group = relation.main_group
             except Exception as e:
-                _LOGGER.info(f"method=profiles.getProfileContext response: {responsedata_masterdata}")
-                _LOGGER.error(f"Error parsing widgets: {e}")
+                _LOGGER.info(f"method={api_method_masterdata} response: {responsedata_masterdata}")
+                _LOGGER.error(f"Error assigning main groups: {e}")
 
         result = AulaLoginData(
             profiles = profiles,
@@ -324,8 +327,9 @@ class AulaProxyClient:
         start = start_datetime.strftime("%Y-%m-%dT00:00:00.0000%:z").replace("+", "%2B")
         end = end_datetime.strftime("%Y-%m-%dT23:59:59.9990%:z").replace("+", "%2B")
 
+        api_method = "calendar.getBirthdayEventsForInstitutions"
         headers: Dict[str, str]|None = None
-        requesturl: str = f"{self._apiurl}?method=calendar.getBirthdayEventsForInstitutions&start={start}&end={end}&instCodes[]={str.join("&instCodes[]=", inst_profile_codes)}"
+        requesturl: str = f"{self._apiurl}?method={api_method}&start={start}&end={end}&instCodes[]={str.join("&instCodes[]=", inst_profile_codes)}"
 
         # _LOGGER.debug("Calendar post-data: "+str(post_data))
         response: Response|None = None
@@ -339,12 +343,11 @@ class AulaProxyClient:
                 self._raise_error(response)
             return []
         responsedata: AulaGetBirthdayEventsForInstitutionsResponse = response.json()
-        # _LOGGER.debug(f"method=calendar.getBirthdayEventsForInstitutions response: {response}")
         try:
             events = AulaBirthdayParser.parse_birthday_event_response(responsedata)
         except Exception as e:
-            _LOGGER.info(f"method=calendar.getBirthdayEventsForInstitutions response: {responsedata}")
-            _LOGGER.error(f"Error parsing birthday: {e}")
+            _LOGGER.info(f"method={api_method} response: {responsedata}")
+            _LOGGER.error(f"Error parsing birthday events: {e}")
             raise
         # _LOGGER.debug(f"get_calendar_events: {result}")
         _LOGGER.debug(f"Fetched birthday events: {len(events)}")
@@ -367,7 +370,8 @@ class AulaProxyClient:
         post_data["start"] = start
         post_data["end"] = end
 
-        requesturl: str = f"{self._apiurl}?method=calendar.getEventsByProfileIdsAndResourceIds"
+        api_method = "calendar.getEventsByProfileIdsAndResourceIds"
+        requesturl: str = f"{self._apiurl}?method={api_method}"
 
         # _LOGGER.debug("Calendar post-data: "+str(post_data))
         response: Response|None = None
@@ -381,11 +385,10 @@ class AulaProxyClient:
                 self._raise_error(response)
             return []
         responsedata: AulaGetEventsByProfileIdsAndResourceIdsResponse = response.json()
-        # _LOGGER.debug(f"method=calendar.getEventsByProfileIdsAndResourceIds response: {response}")
         try:
             events = AulaCalendarParser.parse_calendar_event_response(responsedata)
         except Exception as e:
-            _LOGGER.info(f"method=calendar.getEventsByProfileIdsAndResourceIds response: {responsedata}")
+            _LOGGER.info(f"method={api_method} response: {responsedata}")
             _LOGGER.error(f"Error parsing calendar events: {e}")
             raise
         # _LOGGER.debug(f"get_calendar_events: {result}")
@@ -399,8 +402,9 @@ class AulaProxyClient:
         children = self.flatten_children(profiles)
         child_ids_as_str_list = list(set(str(child.id) for child in children))
 
+        api_method = "presence.getDailyOverview"
         headers:Dict[str, str]|None = None
-        requesturl: str = f"{self._apiurl}?method=presence.getDailyOverview&childIds[]={str.join("&childIds[]=", child_ids_as_str_list)}"
+        requesturl: str = f"{self._apiurl}?method={api_method}&childIds[]={str.join("&childIds[]=", child_ids_as_str_list)}"
 
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
@@ -422,7 +426,7 @@ class AulaProxyClient:
                     if child.id not in overview_ids:
                         _LOGGER.warning(f"Unable to retrieve presence data from Aula from child with id {child.id}. Some data will be missing from sensor entities.")
         except Exception as e:
-            _LOGGER.info(f"method=presence.getDailyOverview response: {responsedata}")
+            _LOGGER.info(f"method={api_method} response: {responsedata}")
             _LOGGER.error(f"Error parsing daily overviews: {e}")
             raise
         # _LOGGER.debug(f"get_daily_overviews: {daily_overviews}")
@@ -432,8 +436,9 @@ class AulaProxyClient:
 
     def get_message_threads(self) -> List[AulaMessageThread]:
         _LOGGER.debug(f"Fetching message threads")
+        api_method = "messaging.getThreads"
         headers:Dict[str, str]|None = None
-        requesturl: str = f"{self._apiurl}?method=messaging.getThreads&sortOn=date&orderDirection=desc&page=0"
+        requesturl: str = f"{self._apiurl}?method={api_method}&sortOn=date&orderDirection=desc&page=0"
 
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
@@ -450,7 +455,7 @@ class AulaProxyClient:
         try:
             threads = AulaMessageThreadParser.parse_message_threads_response(responsedata)
         except Exception as e:
-            _LOGGER.info(f"method=messaging.getThreads response: {responsedata}")
+            _LOGGER.info(f"method={api_method} response: {responsedata}")
             _LOGGER.error(f"Error parsing message threads: {e}")
             raise
         # _LOGGER.debug(f"get_message_threads: {threads}")
@@ -469,8 +474,9 @@ class AulaProxyClient:
         _LOGGER.debug(f"Fetching messages")
         if not thread: return []
         if thread.sensitive: raise PermissionError("Use Aula to read this message.")
+        api_method = "messaging.getMessagesForThread"
         headers:Dict[str, str]|None = None
-        requesturl: str = f"{self._apiurl}?method=messaging.getMessagesForThread&threadId={thread.id}&page=0"
+        requesturl: str = f"{self._apiurl}?method={api_method}&threadId={thread.id}&page=0"
 
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
@@ -479,14 +485,14 @@ class AulaProxyClient:
                 break
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
-                _LOGGER.error(f"Failed to retrieve message threads from thread: {thread.subject} (id {thread.id}). Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
+                _LOGGER.error(f"Failed to retrieve messages from thread: {thread.subject} (id {thread.id}). Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
                 self._raise_error(response)
             return []
         responsedata: AulaGetMessagesForThreadResponse = response.json()
         try:
             messages = AulaMessageThreadParser.parse_messages_response(responsedata)
         except Exception as e:
-            _LOGGER.info(f"method=messaging.getMessagesForThread response: {responsedata}")
+            _LOGGER.info(f"method={api_method} response: {responsedata}")
             _LOGGER.error(f"Error parsing messages: {e}")
             raise
         # _LOGGER.debug(f"get_messages: {messages}")
@@ -502,8 +508,9 @@ class AulaProxyClient:
         child_userids_as_str_list = list(set(str(child.id) for child in children))
         institution_profile_codes = list(set(child.institution_code for child in children))
 
+        api_method = "notifications.getNotificationsForActiveProfile"
         headers: Dict[str, str] = self._get_aula_header()
-        requesturl: str = f"{self._get_aula_api()}?method=notifications.getNotificationsForActiveProfile&activeChildrenIds[]={str.join("&activeChildrenIds[]=",child_userids_as_str_list)}&activeInstitutionCodes[]={str.join("&activeInstitutionCodes[]=",institution_profile_codes)}"
+        requesturl: str = f"{self._get_aula_api()}?method={api_method}&activeChildrenIds[]={str.join("&activeChildrenIds[]=",child_userids_as_str_list)}&activeInstitutionCodes[]={str.join("&activeInstitutionCodes[]=",institution_profile_codes)}"
 
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
@@ -519,7 +526,7 @@ class AulaProxyClient:
         try:
             notifications = AulaNotificationParser.parse_notification_response(responsedata)
         except Exception as e:
-            _LOGGER.info(f"method=notifications.getNotificationsForActiveProfile response: {responsedata}")
+            _LOGGER.info(f"method={api_method} response: {responsedata}")
             _LOGGER.error(f"Error parsing notifications: {e}")
             raise
         # _LOGGER.debug(f"get_notifications: {notifications}")
@@ -557,7 +564,7 @@ class AulaProxyClient:
                 if response is not None:
                     if response.status_code == HTTPStatus.UNAUTHORIZED:
                         token = self._refresh_token(widgetid)
-                    _LOGGER.error(f"Failed to retrieve notifications from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
+                    _LOGGER.error(f"Failed to retrieve weekly plans from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
                     if not first_run: continue
                     self._raise_error(response)
                 return []

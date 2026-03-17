@@ -46,9 +46,9 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
     _weeklyplanmap: dict[int, List[AulaWeeklyPlan]]
     _eventmap: dict[int, List[AulaCalendarEvent]]
     _client: AulaClient
-    _birthday_listeners = dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]()
-    _event_listeners = dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]]()
-    _weekly_plan_listeners = dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]()
+    _birthday_listeners: dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]
+    _event_listeners: dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]]
+    _weekly_plan_listeners: dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]
 
     def __init__(self, device_id: str, hass: HomeAssistant, client: AulaClient, config_entry: ConfigEntry):
         """Initialize my coordinator."""
@@ -69,6 +69,9 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         self._birthdaymap = dict()
         self._eventmap = dict()
         self._weeklyplanmap = dict()
+        self._birthday_listeners = dict()
+        self._event_listeners = dict()
+        self._weekly_plan_listeners = dict()
         self._client = client
         self.device_id = device_id
         self.aula_version = client.aula_version
@@ -143,11 +146,15 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
                 updated_weekly_plans_for_listener_keys = new_weeklyplan_keys
             )
 
+            for key in new_birtyday_keys:
+                meta = birthdaylisteners.get(key)
+                if meta: meta.last_updated = now()
+                else: _LOGGER.warning(f"Out of sync with birthday listeners. {key} could not be found, even though it received new data")
+
             for key in new_event_keys:
                 meta = eventlisteners.get(key)
                 if meta: meta.last_updated = now()
                 else: _LOGGER.warning(f"Out of sync with event listeners. {key} could not be found, even though it received new data")
-
 
             for key in new_weeklyplan_keys:
                 meta = weekplanlisteners.get(key)

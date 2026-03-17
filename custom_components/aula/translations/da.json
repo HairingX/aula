@@ -24,6 +24,14 @@
         "description": "Indtast dine Unilogin oplysninger",
         "title": "Aula"
       },
+      "reconf": {
+        "data": {
+          "password": "Unilogin password",
+          "username": "Unilogin brugernavn"
+        },
+        "description": "Opdater dine Unilogin oplysninger",
+        "title": "Aula"
+      },
       "options": {
         "data": {
           "schoolschedule": "Tilføj skoleskemaer som kalender entiteter?",

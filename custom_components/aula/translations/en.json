@@ -24,6 +24,14 @@
         "description": "Enter your Unilogin credentials",
         "title": "Aula"
       },
+      "reconf": {
+        "data": {
+          "password": "Unilogin password",
+          "username": "Unilogin username"
+        },
+        "description": "Update your Unilogin credentials",
+        "title": "Aula"
+      },
       "options": {
         "data": {
           "schoolschedule": "Add school schedules as calendar entities?",
