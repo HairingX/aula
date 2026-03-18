@@ -67,7 +67,7 @@ Config Flow (Unilogin credentials)
 ## Conventions
 
 - All documentation, comments, and commit messages must be written in English unless explicitly told otherwise
-- Python 3.14, minimum Home Assistant 2024.12.0
+- Python 3.14, minimum Home Assistant 2026.3.0
 - 4-space indentation, LF line endings
 - unittest framework (not pytest) for tests; test fixtures are JSON files in `aula_proxy/test_messages/`
 - Version tracked in `custom_components/aula/manifest.json`
