@@ -29,6 +29,8 @@ from .models.module import (
     AulaEasyiqWeeklyPlan,
     AulaEasyiqDailyPlan,
     AulaEasyiqEvent,
+    AulaNewsletter,
+    AulaWeeklyNewsletter,
     AulaAlbumNotification,
     AulaCalendarEventNotification,
     AulaGalleryNotification,
@@ -79,6 +81,9 @@ __all__ = [
     'AulaEasyiqWeeklyPlan',
     'AulaEasyiqDailyPlan',
     'AulaEasyiqEvent',
+
+    'AulaNewsletter',
+    'AulaWeeklyNewsletter',
 
     'AulaProxyClient',
     'AulaAlbumNotification',

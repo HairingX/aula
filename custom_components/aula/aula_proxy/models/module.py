@@ -7,6 +7,7 @@ from .aula_notification_parser import AulaNotificationParser
 from .aula_profile_parser import AulaProfileParser
 from .aula_weekly_plan_parser import AulaWeeklyPlanParser
 from .aula_easyiq_weekplan_parser import AulaEasyiqWeekplanParser
+from .aula_newsletter_parser import AulaNewsletterParser
 
 from .aula_birthday_models import (
     AulaBirthdayEvent,
@@ -64,6 +65,10 @@ from .aula_easyiq_weekplan_models import (
     AulaEasyiqDailyPlan,
     AulaEasyiqEvent,
 )
+from .aula_newsletter_models import (
+    AulaNewsletter,
+    AulaWeeklyNewsletter,
+)
 
 # Add other imports here as needed
 
@@ -79,6 +84,7 @@ __all__ = [
     'AulaProfileParser',
     'AulaWeeklyPlanParser',
     'AulaEasyiqWeekplanParser',
+    'AulaNewsletterParser',
 
     #models
     #birthday
@@ -130,4 +136,7 @@ __all__ = [
     'AulaEasyiqWeeklyPlan',
     'AulaEasyiqDailyPlan',
     'AulaEasyiqEvent',
+    #newsletter (MinUddannelse)
+    'AulaNewsletter',
+    'AulaWeeklyNewsletter',
 ]

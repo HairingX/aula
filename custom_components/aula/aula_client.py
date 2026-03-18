@@ -14,6 +14,7 @@ from .aula_proxy.module import (
         AulaMessageThread,
         AulaProfile,
         AulaProxyClient,
+        AulaWeeklyNewsletter,
         AulaWeeklyPlan,
         AulaChildProfile,
         AULA_NOTIFICATION_TYPES
@@ -65,3 +66,6 @@ class AulaClient:
 
     def get_easyiq_weekly_plans(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaEasyiqWeeklyPlan]:
         return self._proxy.get_easyiq_weekly_plans(profiles, start_datetime, end_datetime)
+
+    def get_newsletters(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaWeeklyNewsletter]:
+        return self._proxy.get_newsletters(profiles, start_datetime, end_datetime)

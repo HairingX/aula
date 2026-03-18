@@ -22,9 +22,11 @@ from .aula_proxy.models.module import (
     AulaEasyiqEvent,
     AulaEasyiqWeeklyPlan,
     AulaInstitutionProfile,
+    AulaNewsletter,
     AulaProfile,
     AulaCalendarEvent,
     AulaDailyPlanTask,
+    AulaWeeklyNewsletter,
     AulaWeeklyPlan,
     AulaDailyPlan,
 )
@@ -65,6 +67,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     if data_coordinator.easyiq_weekplan_supported():
         for child in data_coordinator.data.children:
             entities.append(AulaEasyiqWeekplanCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
+
+    if data_coordinator.newsletter_supported():
+        for child in data_coordinator.data.children:
+            entities.append(AulaNewsletterCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
 
     async_add_entities(entities)
 
@@ -481,4 +487,68 @@ class AulaEasyiqWeekplanCalendar(AulaCalendarEntityBase, CalendarEntity): # type
             start=start,
             end=end,
             description=None if not description or len(description.strip()) == 0 else description,
+        )
+
+
+class AulaNewsletterCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
+    """A calendar entity for MinUddannelse newsletters (widget 0029).
+    Each newsletter is displayed as an all-day event on the Monday of its week.
+    The HTML content is preserved in the description for custom card rendering."""
+    _profile: AulaChildProfile
+    _institution: AulaInstitutionProfile
+    _data_coordinator: AulaDataCoordinator
+
+    def __init__(self, calendar_coordinator: AulaCalendarCoordinator, data_coordinator: AulaDataCoordinator, profile: AulaChildProfile, institution: AulaInstitutionProfile):
+        super().__init__(calendar_coordinator, name="newsletter")
+        self._data_coordinator = data_coordinator
+        self._profile = profile
+        first_name = profile.first_name
+        institution_name = institution.institution_name
+        self._attr_unique_id = f"{self._attr_unique_id}_{first_name}_{institution_name}"
+        self._attr_translation_placeholders = { "name": first_name, "institution": institution_name }
+
+    async def async_will_remove_from_hass(self):
+        await self.coordinator.async_remove_newsletter_key(self._profile)
+        return await super().async_will_remove_from_hass()
+
+    async def async_added_to_hass(self):
+        await self.coordinator.async_add_newsletter_key(self._profile)
+        return await super().async_added_to_hass()
+
+    def _handle_data_updated(self, data: AulaCalendarCoordinatorData) -> bool:
+        if self._profile.id in data.updated_newsletters_for_listener_keys:
+            return True
+        return False
+
+    @property
+    def event(self) -> CalendarEvent | None:
+        current_time = now()
+        newsletters = self.coordinator.get_newsletters(self._profile)
+        for weekly in newsletters:
+            if weekly.to_date >= current_time.date():
+                for newsletter in weekly.newsletters:
+                    return self._create_calendar_event(weekly, newsletter)
+        return None
+
+    async def async_get_events(self, hass: HomeAssistant, start_date: datetime, end_date: datetime) -> List[CalendarEvent]:
+        newsletters = await self.coordinator.get_newsletters_for_interval([self._profile], start_date, end_date)
+        events = list[CalendarEvent]()
+        for weekly in newsletters:
+            for newsletter in weekly.newsletters:
+                event = self._create_calendar_event(weekly, newsletter)
+                if _is_event_in_range(event, start_date, end_date):
+                    events.append(event)
+        return events
+
+    def _create_calendar_event(self, weekly: AulaWeeklyNewsletter, newsletter: AulaNewsletter) -> CalendarEvent:
+        summary = f"Newsletter - {weekly.child_name}"
+        if newsletter.institution_name:
+            summary = f"{summary} ({newsletter.institution_name})"
+
+        return CalendarEvent(
+            uid=str(newsletter.id),
+            summary=summary,
+            start=weekly.from_date,
+            end=weekly.to_date + timedelta(days=1),
+            description=newsletter.content_html,
         )

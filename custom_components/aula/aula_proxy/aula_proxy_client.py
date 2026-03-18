@@ -21,6 +21,7 @@ from .responses.get_profile_master_data_response import AulaGetProfileMasterData
 from .responses.get_profiles_by_login_response import AulaGetProfilesByLoginResponse
 from .responses.get_weekly_plans_response import AulaGetWeeklyPlansResponse
 from .responses.get_easyiq_weekplan_response import AulaGetEasyiqWeekplanResponse
+from .responses.get_weekly_newsletter_response import AulaGetWeeklyNewsletterResponse
 from .responses.get_birthday_events_for_institutions import AulaGetBirthdayEventsForInstitutionsResponse
 from .const import (
     API,
@@ -680,6 +681,49 @@ class AulaProxyClient:
             first_run = False
         _LOGGER.debug(f"Fetched easyiq weekplan: {len(weeklyplans)}")
         return weeklyplans
+
+    def get_newsletters(self, profiles: List[AulaChildProfile], from_datetime: datetime, to_datetime: datetime) -> List[AulaWeeklyNewsletter]:
+        """Fetches weekly newsletters from MinUddannelse (widget 0029)."""
+        _LOGGER.debug(f"Fetching newsletters for {len(profiles)} profiles from {from_datetime} to {to_datetime}")
+        if len(profiles) == 0: return []
+        if not self.has_widget(AulaWidgetId.MY_EDUCATION_WEEKLETTER): return []
+        guardian_user_id = self._get_guardian_user_id()
+        child_userids_as_str_list = list(set(str(child.user_id) for child in profiles))
+
+        widgetid = AulaWidgetId.MY_EDUCATION_WEEKLETTER
+        token = self._get_token(widgetid)
+        headers: Dict[str, str] = self._get_myeducation_header(token)
+        requesturl: str = f"{MIN_UDDANNELSE_API}/ugebrev?assuranceLevel=2&childFilter={",".join(child_userids_as_str_list)}&currentWeekNumber={{weekno}}&isMobileApp=false&placement=narrow&sessionUUID={guardian_user_id}&userProfile=guardian"
+
+        newsletters = list[AulaWeeklyNewsletter]()
+        from_datetime = from_datetime - timedelta(days=from_datetime.weekday())
+        first_run = True
+        while from_datetime < to_datetime:
+            from_date = from_datetime.date()
+            weekno = self._get_aula_week_formatted(from_date)
+            response: Response|None = None
+            for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
+                try:
+                    response = self._session.get(requesturl.format(weekno=weekno), headers=headers, verify=True)
+                except (RequestsTimeout, RequestsConnectionError) as e:
+                    self._handle_request_exception(e, attempt, "ugebrev")
+                    continue
+                if not self._should_retry_request(response, attempt):
+                    break
+            if response == None or response.status_code != HTTPStatus.OK:
+                if response is not None:
+                    if response.status_code == HTTPStatus.UNAUTHORIZED:
+                        token = self._refresh_token(widgetid)
+                    _LOGGER.error(f"Failed to retrieve newsletters from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}.")
+                    if not first_run: continue
+                    self._raise_error(response)
+                return []
+            responsedata: AulaGetWeeklyNewsletterResponse = response.json()
+            newsletters.extend(AulaNewsletterParser.parse_response(responsedata, from_date))
+            from_datetime += timedelta(weeks=1)
+            first_run = False
+        _LOGGER.debug(f"Fetched newsletters: {len(newsletters)}")
+        return newsletters
 
 
     # #TODO: Not yet implemented

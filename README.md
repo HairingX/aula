@@ -8,7 +8,9 @@ This is a custom component for Home Assistant to integrate Aula.
 Available entities:
 - Calendars:
   - Events (Containing calendar events from aula, such as class rooms etc.)
-  - Weekly Plan (containing meebook weekly plan)
+  - Weekly Plan (Meebook weekly plan)
+  - EasyIQ Weekly Plan (untested - EasyIQ time-based weekly events)
+  - Newsletter (untested - MinUddannelse weekly newsletters with HTML content)
   - Birthdays
 - Sensors:
   - Presence (Present/Not Present)
@@ -24,7 +26,6 @@ Available entities:
 Not yet implemented:
 
 _As i have no json from the requests for these, i cannot develop and test the functionality to a point where i can verify their functionality._
-- "Ugeplaner/Ugenoter" from "Min Uddannelse", "Meebook" and "EasyIQ"
 - "Opgaver" from "Min Uddannelse"
 - "Huskelisten" from "Systematic"
 

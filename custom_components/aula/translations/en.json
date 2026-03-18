@@ -18,7 +18,6 @@
           "id": "Entity ID",
           "password": "Unilogin password",
           "schoolschedule": "Add school schedules as calendar entities?",
-          "ugeplan": "Add ugeplaner as sensor attributes?",
           "username": "Unilogin username"
         },
         "description": "Enter your Unilogin credentials",
@@ -34,8 +33,7 @@
       },
       "options": {
         "data": {
-          "schoolschedule": "Add school schedules as calendar entities?",
-          "ugeplan": "Add ugeplaner as sensor attributes?"
+          "schoolschedule": "Add school schedules as calendar entities?"
         },
         "description": "",
         "title": "Options"
@@ -133,6 +131,9 @@
       },
       "easyiq_weekplan": {
         "name": "EasyIQ Weekly Plans {name} {institution}"
+      },
+      "newsletter": {
+        "name": "Newsletter {name} {institution}"
       },
       "weekly_plan": {
         "name": "Weekly Plans {name} {institution}",
@@ -276,8 +277,7 @@
     "step": {
       "options": {
         "data": {
-          "schoolschedule": "Add school schedules as calendar entities?",
-          "ugeplan": "Add ugeplaner as sensor attributes?"
+          "schoolschedule": "Add school schedules as calendar entities?"
         },
         "description": "",
         "title": "Options"

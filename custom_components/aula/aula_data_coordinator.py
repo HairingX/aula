@@ -111,7 +111,7 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
     def reminders_supported(self) -> bool:
         return self._client.has_widget(AulaWidgetId.REMINDERS)
 
-    def weekletters_supported(self) -> bool:
+    def newsletter_supported(self) -> bool:
         return self._client.has_widget(AulaWidgetId.MY_EDUCATION_WEEKLETTER)
 
     def assignments_supported(self) -> bool:

@@ -18,7 +18,6 @@
           "id": "Enheds ID",
           "password": "Unilogin password",
           "schoolschedule": "Tilføj skoleskemaer som kalender entiteter?",
-          "ugeplan": "Tilføj ugeplaner som sensor attributter?",
           "username": "Unilogin brugernavn"
         },
         "description": "Indtast dine Unilogin oplysninger",
@@ -34,8 +33,7 @@
       },
       "options": {
         "data": {
-          "schoolschedule": "Tilføj skoleskemaer som kalender entiteter?",
-          "ugeplan": "Tilføj ugeplaner som sensor attributter?"
+          "schoolschedule": "Tilføj skoleskemaer som kalender entiteter?"
         },
         "description": "",
         "title": "Indstillinger"
@@ -133,6 +131,9 @@
       },
       "easyiq_weekplan": {
         "name": "EasyIQ Ugeplaner {name} {institution}"
+      },
+      "newsletter": {
+        "name": "Ugebrev {name} {institution}"
       },
       "weekly_plan": {
         "name": "Ugeplaner {name} {institution}",
@@ -284,8 +285,7 @@
       },
       "options": {
         "data": {
-          "schoolschedule": "Tilføj skoleskemaer som kalender entiteter?",
-          "ugeplan": "Tilføj ugeplaner som sensor attributter?"
+          "schoolschedule": "Tilføj skoleskemaer som kalender entiteter?"
         },
         "description": "",
         "title": "Login"
