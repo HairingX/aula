@@ -67,10 +67,10 @@ self._attr_unique_id = self._attr_translation_key
 
 | Model File | Parser File | Issue |
 |-----------|-------------|-------|
-| `aula_notication_models.py` | `aula_notification_parser.py` | Typo in model filename |
+| `aula_notification_models.py` | `aula_notification_parser.py` | Filename typo fixed |
 | `aula_weekly_newsletter_models.py` | `aula_weekly_newsletter_parser.py` | Parser entirely commented out |
 
-**Note:** Renaming `aula_notication_models.py` requires updating the import in `module.py:30`.
+**Note:** `aula_notication_models.py` has been renamed to `aula_notification_models.py` and imports updated.
 
 ---
 

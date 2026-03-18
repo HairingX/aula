@@ -13,7 +13,7 @@ All data models live in `custom_components/aula/aula_proxy/models/` and follow a
 | `aula_profile_models.py` | `aula_profile_parser.py` | Profiles, children, institutions, daily overviews |
 | `aula_calendar_models.py` | `aula_calendar_parser.py` | Calendar events, timeslots, lessons, resources |
 | `aula_message_thread_models.py` | `aula_message_thread_parser.py` | Message threads, messages, recipients |
-| `aula_notication_models.py` | `aula_notification_parser.py` | All notification types |
+| `aula_notification_models.py` | `aula_notification_parser.py` | All notification types |
 | `aula_weekly_plan_models.py` | `aula_weekly_plan_parser.py` | Weekly plans, daily plans, tasks |
 | `aula_birthday_models.py` | `aula_birthday_parser.py` | Birthday events |
 
@@ -182,7 +182,7 @@ AulaThreadRecipient
 
 ---
 
-## Notification Models (`aula_notication_models.py`)
+## Notification Models (`aula_notification_models.py`)
 
 All notifications share a base class:
 

@@ -130,7 +130,7 @@ custom_components/aula/
     │   │
     │   ├── aula_message_thread_parser.py    # Message JSON parser
     │   │
-    │   ├── aula_notication_models.py        # Notification dataclasses
+    │   ├── aula_notification_models.py       # Notification dataclasses
     │   │   - AulaNotificationBase (base class)
     │   │   - AulaCalendarEventNotification
     │   │   - AulaGalleryNotification, AulaAlbumNotification

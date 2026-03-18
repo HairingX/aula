@@ -27,7 +27,7 @@ from .aula_message_thread_models import (
     AulaThreadRecipient,
     AulaThreadRegardingChild,
 )
-from .aula_notication_models import(
+from .aula_notification_models import(
     AulaNotificationBase,
     AulaAlbumNotification,
     AulaCalendarEventNotification,

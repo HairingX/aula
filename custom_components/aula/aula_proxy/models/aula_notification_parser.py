@@ -4,7 +4,7 @@ import logging
 from ..responses.get_notifications_response import AulaGetNotificationsResponse, AulaNotificationData
 from ..utils.list_utils import list_without_none
 
-from .aula_notication_models import *
+from .aula_notification_models import *
 from .aula_parser import AulaParser
 
 _LOGGER = logging.getLogger(__name__)

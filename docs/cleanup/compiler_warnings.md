@@ -30,7 +30,7 @@ from typing import Any
 - `aula_proxy/models/aula_profile_models.py`
 - `aula_proxy/models/aula_calendar_models.py`
 - `aula_proxy/models/aula_message_thread_models.py`
-- `aula_proxy/models/aula_notication_models.py`
+- `aula_proxy/models/aula_notification_models.py`
 
 ---
 
@@ -133,7 +133,7 @@ Entirely commented out with syntax errors (e.g., `for institution in :` on line 
 ### 10. Filename typo: "notication" instead of "notification"
 **Status: CONFIRMED**
 
-**File:** `custom_components/aula/aula_proxy/models/aula_notication_models.py`
+**File:** `custom_components/aula/aula_proxy/models/aula_notification_models.py`
 
 **Note from second review:** The import in `module.py:30` uses the typo'd name. Renaming requires a coordinated update of both the file and the import.
 
