@@ -19,6 +19,7 @@ class AulaWeeklyPlanParser(AulaParser):
             pill = AulaWeeklyPlanParser._parse_str(data.get("pill")),
             content = AulaWeeklyPlanParser._parse_str(data.get("content")),
             editUrl = AulaWeeklyPlanParser._parse_nullable_str(data.get("editUrl")),
+            title = AulaWeeklyPlanParser._parse_nullable_str(data.get("title")),
         )
         return result
 

@@ -19,3 +19,4 @@ secrets.yml
 test_messages/
 .claude/settings.local.json
 config/.ha_run.lock
+docs/temp/

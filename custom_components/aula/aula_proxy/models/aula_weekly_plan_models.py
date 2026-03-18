@@ -11,6 +11,7 @@ class AulaDailyPlanTask:
     pill: str
     type: str
     editUrl: Optional[str|None] = None
+    title: Optional[str|None] = None
 
 @dataclass
 class AulaDailyPlan:

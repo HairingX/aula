@@ -1,5 +1,5 @@
 import datetime
-from typing import List, TypedDict
+from typing import List, NotRequired, TypedDict
 
 class AulaGetWeeklyPlansDailyTask(TypedDict):
     id: int
@@ -8,6 +8,7 @@ class AulaGetWeeklyPlansDailyTask(TypedDict):
     group: str
     pill: str
     content: str
+    title: NotRequired[str|None]
 
 class AulaGetWeeklyPlansDailyPlan(TypedDict):
     date: str
