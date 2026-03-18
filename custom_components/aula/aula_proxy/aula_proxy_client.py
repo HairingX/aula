@@ -57,8 +57,14 @@ class AulaProxyClient:
         self._tokens = dict()
 
 
+    def _get_csrf_token(self) -> str:
+        csrf_token = self._session.cookies.get_dict().get("Csrfp-Token")
+        if not csrf_token:
+            raise ConnectionError("CSRF token not found in session cookies. Session may have expired.")
+        return csrf_token
+
     def custom_api_call(self, uri:str, post_data:str|None) -> Dict[str,str]:
-        csrf_token = self._session.cookies.get_dict()["Csrfp-Token"]
+        csrf_token = self._get_csrf_token()
         headers = {"csrfp-token": csrf_token, "content-type": "application/json"}
         url = self._apiurl + uri
         _LOGGER.debug(f"custom_api_call: Making API call to {url}")
@@ -358,7 +364,7 @@ class AulaProxyClient:
         _LOGGER.debug(f"Fetching calendar events for {len(profiles)} profiles from {start_datetime} to {end_datetime}")
         if len(profiles) == 0: return []
         inst_profile_ids = list(set(profile.id for profile in profiles))
-        csrf_token = self._session.cookies.get_dict()["Csrfp-Token"]
+        csrf_token = self._get_csrf_token()
         start = start_datetime.strftime("%Y-%m-%d 00:00:00.0000%:z")
         end = end_datetime.strftime("%Y-%m-%d 00:00:00.0000%:z")
 

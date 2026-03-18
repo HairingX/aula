@@ -17,7 +17,7 @@ class AulaProfileParser(AulaParser):
         if not data: return None
         result = AulaProfile(
             children = AulaProfileParser.parse_children(data.get("children")),
-            first_name = AulaProfileParser._parse_str(data.get("displayName")).split()[0],
+            first_name = (AulaProfileParser._parse_str(data.get("displayName")).split() or [""])[0],
             institution_profiles = AulaProfileParser.parse_institutions(data.get("institutionProfiles")),
             is_latest_data_policy_accepted = AulaProfileParser._parse_nullable_bool(data.get("isLatestDataPolicyAccepted")),
             name = AulaProfileParser._parse_str(data.get("displayName")),
@@ -47,7 +47,7 @@ class AulaProfileParser(AulaParser):
     def parse_child(data: AulaChildData | None) -> AulaChildProfile | None:
         if not data: return None
         result = AulaChildProfile(
-            first_name = AulaProfileParser._parse_str(data.get("name")).split()[0],
+            first_name = (AulaProfileParser._parse_str(data.get("name")).split() or [""])[0],
             id = AulaProfileParser._parse_int(data.get("id")),
             institution_code = AulaProfileParser._parse_str(data.get("institutionCode")),
             institution_profile = AulaProfileParser.parse_institution(data.get("institutionProfile")),

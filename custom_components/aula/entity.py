@@ -4,7 +4,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from typing import Generic, TypeVar
 import logging
 
-from .const import DOMAIN, MANUFACTRURER
+from .const import DOMAIN, MANUFACTURER
 from .aula_data_coordinator import AulaDataCoordinator, AulaDataCoordinatorData
 from .aula_calendar_coordinator import AulaCalendarCoordinator, AulaCalendarCoordinatorData
 
@@ -39,7 +39,7 @@ class AulaEntityBase(Generic[CONTEXT_TYPE], CoordinatorEntity[AulaDataCoordinato
         info: DeviceInfo = {
             "identifiers": {(DOMAIN, self.coordinator.device_id)},
             "name": self.coordinator.device_id,
-            "manufacturer": MANUFACTRURER,
+            "manufacturer": MANUFACTURER,
             "sw_version": f"{self.coordinator.aula_version}",
         }
         return info
@@ -68,7 +68,7 @@ class AulaCalendarEntityBase(CoordinatorEntity[AulaCalendarCoordinator]):
         info: DeviceInfo = {
             "identifiers": {(DOMAIN, self.coordinator.device_id)},
             "name": self.coordinator.device_id,
-            "manufacturer": MANUFACTRURER,
+            "manufacturer": MANUFACTURER,
             "sw_version": f"{self.coordinator.aula_version}",
         }
         return info

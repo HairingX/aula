@@ -2,7 +2,7 @@ from typing import List
 import datetime
 import logging
 
-from .const import API_VERSION
+from .aula_proxy.const import API_VERSION
 from .aula_proxy.models.constants import AulaWidgetId
 from .aula_proxy.module import (
         AulaBirthdayEvent,

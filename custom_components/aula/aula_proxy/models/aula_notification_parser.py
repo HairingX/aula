@@ -40,7 +40,7 @@ class AulaNotificationParser(AulaParser):
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
             triggered=AulaNotificationParser._parse_datetime(data.get("triggered"), fix_timezone=True),
-            folder_id=AulaNotificationParser._parse_int(data.get("institutionCode")),
+            folder_id=AulaNotificationParser._parse_int(data.get("institutionCode")),  # intentional: institutionCode is used as the folder key
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
             message_text=AulaNotificationParser._parse_str(data.get("messageText")),
