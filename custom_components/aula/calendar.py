@@ -229,6 +229,20 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
                 if unbooked_meeting:
                     summary += " <!>"
 
+        if event.lesson is not None and event.lesson.participants:
+            initials = ", ".join(
+                p.teacher_initials for p in event.lesson.participants if p.teacher_initials
+            )
+            if initials:
+                summary = f"{summary} ({initials})"
+            teachers = ", ".join(
+                p.teacher_name for p in event.lesson.participants if p.teacher_name
+            )
+            if teachers:
+                if description:
+                    description += "\n"
+                description += teachers
+
         return CalendarEvent(
             uid=str(event.id),
             summary=summary,
