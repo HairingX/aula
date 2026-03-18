@@ -59,6 +59,46 @@ class AulaWeeklyPlanTaskType(StrEnum):
 
 
 WEEKLY_PLAN_TASK_ICON: dict[str, str] = {
-    AulaWeeklyPlanTaskType.TASK: "⏰",
+    AulaWeeklyPlanTaskType.TASK: "🔴",
     AulaWeeklyPlanTaskType.COMMENT: "ℹ️",
 }
+
+
+# --- UI Labels ---
+# All user-facing text in one place.
+# To add a new language: add a new key to _LABELS and set DEFAULT_LANGUAGE.
+# On config flow integration, DEFAULT_LANGUAGE can be replaced by a config entry option.
+
+_language = "da"
+
+_LABELS: dict[str, dict[str, str]] = {
+    "da": {
+        "substitute": "Vikar",
+        "bring_children": "Medbring",
+        "status_prefix": "Status",
+        "birthday_turns": "fylder",
+        "response_waiting": "Afventer svar",
+        "response_accepted": "Accepteret",
+        "response_declined": "Afvist",
+    },
+    "en": {
+        "substitute": "Substitute",
+        "bring_children": "Bring",
+        "status_prefix": "Status",
+        "birthday_turns": "turns",
+        "response_waiting": "Awaiting response",
+        "response_accepted": "Accepted",
+        "response_declined": "Declined",
+    },
+}
+
+
+def set_language(language: str) -> None:
+    """Set the UI language. Call from config flow / async_setup_entry."""
+    global _language
+    _language = language
+
+
+def get_label(key: str) -> str:
+    """Get a UI label for the current language, falling back to key name."""
+    return _LABELS.get(_language, _LABELS["da"]).get(key, key)

@@ -13,7 +13,10 @@ import logging
 from .aula_calendar_coordinator import AulaCalendarCoordinator, AulaCalendarCoordinatorData
 from .aula_data import get_aula_calendar_coordinator, get_aula_data_coordinator
 from .aula_data_coordinator import AulaDataCoordinator
-from .aula_proxy.models.constants import AulaCalendarEventType, CALENDAR_EVENT_ICON, WEEKLY_PLAN_TASK_ICON
+from .aula_proxy.models.constants import (
+    AulaCalendarEventType, CALENDAR_EVENT_ICON, WEEKLY_PLAN_TASK_ICON,
+    get_label,
+)
 from .aula_proxy.utils.list_utils import list_without_none
 from .aula_proxy.models.module import (
     AulaBirthdayEvent,
@@ -108,7 +111,7 @@ class AulaBirthdayCalendar(AulaCalendarEntityBase, CalendarEntity): # type: igno
     def _create_calendar_event(self, event: AulaBirthdayEvent) -> CalendarEvent:
         age = self._get_age(event)
         icon = CALENDAR_EVENT_ICON.get(AulaCalendarEventType.BIRTHDAY, "")
-        summary = f"{icon} {event.full_name} ({event.main_group_name}) turns {age}"
+        summary = f"{icon} {event.full_name} ({event.main_group_name}) {get_label('birthday_turns')} {age}"
         description = ""
         start_date = self._get_event_start(event)
         end_date = start_date + timedelta(days=1)
@@ -223,7 +226,7 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
                                 end_datetime = timeslotindex.end_datetime
                                 summary = f"{summary} {self._institution.institution_name}"
                                 if location is None: location = self._institution.institution_name
-                                if required_children: description += f"Medbring {", ".join(child.name for child in required_children)}"
+                                if required_children: description += f"{get_label('bring_children')} {", ".join(child.name for child in required_children)}"
                                 unbooked_meeting = False
                         if not unbooked_meeting: break
                     if not unbooked_meeting: break
@@ -238,7 +241,7 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
             if initials:
                 summary = f"{summary} ({initials})"
             if event.lesson.lesson_status == "substitute":
-                summary = f"{summary} - Vikar"
+                summary = f"{summary} - {get_label('substitute')}"
             teachers = ", ".join(
                 p.teacher_name for p in event.lesson.participants if p.teacher_name
             )
@@ -247,16 +250,11 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
                     description += "\n"
                 description += teachers
 
-        RESPONSE_STATUS_LABELS: dict[str, str] = {
-            "waiting": "Afventer svar",
-            "accepted": "Accepteret",
-            "declined": "Afvist",
-        }
         if event.response_status and event.response_status != "accepted":
-            label = RESPONSE_STATUS_LABELS.get(event.response_status, event.response_status)
+            label = get_label(f"response_{event.response_status}")
             if description:
                 description += "\n"
-            description += f"Status: {label}"
+            description += f"{get_label('status_prefix')}: {label}"
 
         summary = f"{icon} {summary}" if icon else summary
 
