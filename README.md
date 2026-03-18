@@ -69,3 +69,73 @@ Below the weekplan I have a graph for the Sensor Present Duration, and below tha
 ### Calendar Dashboard
 As the integration does not limit the interval for calendar data, the calenar dashboard can display data as far in the past/future as Aula supports, making it easy to get a larger overview
 ![Screenshot 2024-10-16 171901](https://github.com/user-attachments/assets/31e546c9-f1e6-44e8-8bea-e533138a0259)
+
+### Weekly Plan per Day (Template Sensor)
+To display events for a specific day of the week, use HA's `calendar.get_events` service with a trigger-based template sensor. This example creates a sensor for Monday's weekly plan events:
+
+```yaml
+template:
+  - trigger:
+      - platform: time_pattern
+        hours: /1
+    action:
+      - action: calendar.get_events
+        target:
+          entity_id: calendar.aula_weekly_plan_CHILDNAME_SCHOOL
+        data:
+          start_date_time: >
+            {{ (now() - timedelta(days=now().weekday())).strftime('%Y-%m-%d 00:00:00') }}
+          end_date_time: >
+            {{ (now() - timedelta(days=now().weekday()) + timedelta(days=1)).strftime('%Y-%m-%d 00:00:00') }}
+        response_variable: monday_events
+    sensor:
+      - name: "Monday Weekly Plan"
+        unique_id: aula_monday_weekly_plan
+        state: "{{ monday_events['calendar.aula_weekly_plan_CHILDNAME_SCHOOL'].events | count }}"
+        attributes:
+          events: "{{ monday_events['calendar.aula_weekly_plan_CHILDNAME_SCHOOL'].events }}"
+```
+
+Replace `CHILDNAME_SCHOOL` with your child's calendar entity name. Duplicate the block for each weekday by adjusting the `timedelta` offset (Tuesday = `weekday() - 1`, Wednesday = `weekday() - 2`, etc.).
+
+You can also fetch all events for the whole week in a single call and filter per day:
+
+```yaml
+template:
+  - trigger:
+      - platform: time_pattern
+        hours: /1
+    action:
+      - action: calendar.get_events
+        target:
+          entity_id: calendar.aula_weekly_plan_CHILDNAME_SCHOOL
+        data:
+          start_date_time: >
+            {{ (now() - timedelta(days=now().weekday())).strftime('%Y-%m-%d 00:00:00') }}
+          end_date_time: >
+            {{ (now() - timedelta(days=now().weekday()) + timedelta(days=7)).strftime('%Y-%m-%d 00:00:00') }}
+        response_variable: week_events
+    sensor:
+      - name: "Monday Weekly Plan"
+        unique_id: aula_monday_weekly_plan
+        state: >
+          {% set monday = (now() - timedelta(days=now().weekday())).strftime('%Y-%m-%d') %}
+          {{ week_events['calendar.aula_weekly_plan_CHILDNAME_SCHOOL'].events
+             | selectattr('start', 'search', monday) | list | count }}
+        attributes:
+          events: >
+            {% set monday = (now() - timedelta(days=now().weekday())).strftime('%Y-%m-%d') %}
+            {{ week_events['calendar.aula_weekly_plan_CHILDNAME_SCHOOL'].events
+               | selectattr('start', 'search', monday) | list }}
+      - name: "Tuesday Weekly Plan"
+        unique_id: aula_tuesday_weekly_plan
+        state: >
+          {% set tuesday = (now() - timedelta(days=now().weekday() - 1)).strftime('%Y-%m-%d') %}
+          {{ week_events['calendar.aula_weekly_plan_CHILDNAME_SCHOOL'].events
+             | selectattr('start', 'search', tuesday) | list | count }}
+        attributes:
+          events: >
+            {% set tuesday = (now() - timedelta(days=now().weekday() - 1)).strftime('%Y-%m-%d') %}
+            {{ week_events['calendar.aula_weekly_plan_CHILDNAME_SCHOOL'].events
+               | selectattr('start', 'search', tuesday) | list }}
+```

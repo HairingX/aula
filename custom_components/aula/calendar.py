@@ -1,13 +1,10 @@
-"""Support for Google Calendar Search binary sensors."""
-
 from datetime import datetime, timedelta, date
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
-from homeassistant.helpers.template import DATE_STR_FORMAT
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util.dt import now
-from typing import Any, Dict, List, final
+from typing import Any, List
 import logging
 
 from .aula_calendar_coordinator import AulaCalendarCoordinator, AulaCalendarCoordinatorData
@@ -32,6 +29,18 @@ from .aula_proxy.models.module import (
 from .entity import AulaCalendarEntityBase
 
 _LOGGER = logging.getLogger(__name__)
+
+def _to_datetime(value: datetime | date, tzinfo: Any) -> datetime:
+    """Convert a date or datetime to a datetime with timezone."""
+    if type(value) is date:
+        return datetime.combine(value, datetime.min.time(), tzinfo)
+    return value  # type: ignore[return-value]
+
+def _is_event_in_range(event: CalendarEvent, start: datetime, end: datetime) -> bool:
+    """Return True if the event overlaps with the given range."""
+    event_start = _to_datetime(event.start, start.tzinfo)
+    event_end = _to_datetime(event.end, start.tzinfo)
+    return event_start < end and event_end >= start
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up the calendar platform."""
@@ -96,7 +105,8 @@ class AulaBirthdayCalendar(AulaCalendarEntityBase, CalendarEntity): # type: igno
         events = list[CalendarEvent]()
         for birthday in birthdays:
             event = self._create_calendar_event(birthday)
-            if event: events.append(event)
+            if event and _is_event_in_range(event, start_date, end_date):
+                events.append(event)
         return events
 
     def _get_active_or_upcoming_event(self) -> CalendarEvent | None:
@@ -183,7 +193,8 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
         """Get all events in a specific time frame."""
         # _LOGGER.debug(f"Getting events for profile: {self._profile.name}, interval: {start_date} - {end_date}")
         result_items = await self.coordinator.get_events_for_interval([self._institution], start_date, end_date)
-        return list_without_none(self._create_calendar_event(event) for event in filter(self._event_filter, result_items))
+        events = list_without_none(self._create_calendar_event(event) for event in filter(self._event_filter, result_items))
+        return [e for e in events if _is_event_in_range(e, start_date, end_date)]
 
     def _get_active_or_upcoming_event(self) -> CalendarEvent | None:
         current_time = now()
@@ -309,62 +320,6 @@ class AulaWeeklyPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ig
             return True
         return False
 
-    @final
-    @property
-    def state_attributes(self) -> Dict[str, Any] | None: # type: ignore
-        """Return the entity state attributes."""
-        attributes = self._CALENDAR_ENTITY_STATE_ATTRIBUTES()
-        if attributes is not None:
-            weekplans = self.coordinator.get_weekly_plans(self._profile)
-            weeklydayplans = self._get_weekly_plans_for_attributes(weekplans, now().date())
-            attributes["monday"] = weeklydayplans[0]
-            attributes["tuesday"] = weeklydayplans[1]
-            attributes["wednesday"] = weeklydayplans[2]
-            attributes["thursday"] = weeklydayplans[3]
-            attributes["friday"] = weeklydayplans[4]
-            attributes["saturday"] = weeklydayplans[5]
-            attributes["sunday"] = weeklydayplans[6]
-            weeklydayplans = self._get_weekly_plans_for_attributes(weekplans, now().date() + timedelta(weeks=1))
-            attributes["next_monday"] = weeklydayplans[0]
-            attributes["next_tuesday"] = weeklydayplans[1]
-            attributes["next_wednesday"] = weeklydayplans[2]
-            attributes["next_thursday"] = weeklydayplans[3]
-            attributes["next_friday"] = weeklydayplans[4]
-            attributes["next_saturday"] = weeklydayplans[5]
-            attributes["next_sunday"] = weeklydayplans[6]
-        return attributes
-
-    def _CALENDAR_ENTITY_STATE_ATTRIBUTES(self) -> Dict[str, Any] | None:
-        """MUST be identical to the methdo in Calendar entity."""
-        if (event := self.event) is None:
-            return None
-        #this must not be change
-        return {
-            "message": event.summary,
-            "all_day": event.all_day,
-            "start_time": event.start_datetime_local.strftime(DATE_STR_FORMAT),
-            "end_time": event.end_datetime_local.strftime(DATE_STR_FORMAT),
-            "location": event.location if event.location else "",
-            "description": event.description if event.description else "",
-        }
-
-    def _get_weekly_plans_for_attributes(self, weekplans: List[AulaWeeklyPlan], date: date) -> List[AulaDailyPlan]:
-        """
-        Calculate the start and end dates for the week and return a list of daily plans.
-
-        Returns:
-            List[AulaDailyPlan]: A list containing 7 AulaDailyPlan objects, one for each day of the week.
-        """
-        monday = date - timedelta(days=date.weekday())
-        sunday = monday + timedelta(days=6)
-        weeklydayplans: List[AulaDailyPlan] = [AulaDailyPlan(date=monday + timedelta(days=i), tasks=[]) for i in range(7)]
-        if weekplans:
-            for weekplan in weekplans:
-                if monday <= weekplan.from_date <= sunday:
-                    for dayplan in weekplan.daily_plans:
-                        weeklydayplans[dayplan.date.weekday()] = dayplan
-        return weeklydayplans
-
 
     @property
     def event(self) -> CalendarEvent | None:
@@ -388,7 +343,8 @@ class AulaWeeklyPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ig
         events = list[CalendarEvent]()
         for weekplan, dayplan, task in self._weekplans_iterable(weekplans):
             event = self._create_calendar_event(weekplan, dayplan, task)
-            if event: events.append(event)
+            if event and _is_event_in_range(event, start_date, end_date):
+                events.append(event)
         return events
 
     def _get_active_or_upcoming_event(self) -> CalendarEvent | None:
