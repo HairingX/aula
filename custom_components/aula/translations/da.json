@@ -131,6 +131,9 @@
       "events": {
         "name": "Begivenheder {name} {institution}"
       },
+      "easyiq_weekplan": {
+        "name": "EasyIQ Ugeplaner {name} {institution}"
+      },
       "weekly_plan": {
         "name": "Ugeplaner {name} {institution}",
         "state_attributes": {

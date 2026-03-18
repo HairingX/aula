@@ -8,6 +8,7 @@ from .aula_proxy.module import (
         AulaBirthdayEvent,
         AulaCalendarEvent,
         AulaDailyOverview,
+        AulaEasyiqWeeklyPlan,
         AulaInstitutionProfile,
         AulaLoginData,
         AulaMessageThread,
@@ -61,3 +62,6 @@ class AulaClient:
 
     def get_weekly_plans(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaWeeklyPlan]:
         return self._proxy.get_weekly_plans(profiles, start_datetime, end_datetime)
+
+    def get_easyiq_weekly_plans(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaEasyiqWeeklyPlan]:
+        return self._proxy.get_easyiq_weekly_plans(profiles, start_datetime, end_datetime)

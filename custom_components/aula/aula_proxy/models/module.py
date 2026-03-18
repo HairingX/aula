@@ -6,6 +6,7 @@ from .aula_message_thread_parser import AulaMessageThreadParser
 from .aula_notification_parser import AulaNotificationParser
 from .aula_profile_parser import AulaProfileParser
 from .aula_weekly_plan_parser import AulaWeeklyPlanParser
+from .aula_easyiq_weekplan_parser import AulaEasyiqWeekplanParser
 
 from .aula_birthday_models import (
     AulaBirthdayEvent,
@@ -53,14 +54,15 @@ from .aula_profile_models import (
     AulaToken,
     AulaWidget,
 )
-from .aula_weekly_newsletter_models import (
-    AulaWeeklyNewsletter,
-    AulaWeeklyNewsletters,
-)
 from .aula_weekly_plan_models import(
     AulaWeeklyPlan,
     AulaDailyPlan,
     AulaDailyPlanTask
+)
+from .aula_easyiq_weekplan_models import (
+    AulaEasyiqWeeklyPlan,
+    AulaEasyiqDailyPlan,
+    AulaEasyiqEvent,
 )
 
 # Add other imports here as needed
@@ -76,6 +78,7 @@ __all__ = [
     'AulaNotificationParser',
     'AulaProfileParser',
     'AulaWeeklyPlanParser',
+    'AulaEasyiqWeekplanParser',
 
     #models
     #birthday
@@ -119,11 +122,12 @@ __all__ = [
     'AulaProfileRelation',
     'AulaToken',
     'AulaWidget',
-    #weekly_newsletter
-    'AulaWeeklyNewsletter',
-    'AulaWeeklyNewsletters',
-    #weekly_plan
+    #weekly_plan (Meebook)
     'AulaWeeklyPlan',
     'AulaDailyPlan',
     'AulaDailyPlanTask',
+    #easyiq_weekplan
+    'AulaEasyiqWeeklyPlan',
+    'AulaEasyiqDailyPlan',
+    'AulaEasyiqEvent',
 ]

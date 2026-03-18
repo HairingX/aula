@@ -18,6 +18,9 @@ from .aula_proxy.utils.list_utils import list_without_none
 from .aula_proxy.models.module import (
     AulaBirthdayEvent,
     AulaChildProfile,
+    AulaEasyiqDailyPlan,
+    AulaEasyiqEvent,
+    AulaEasyiqWeeklyPlan,
     AulaInstitutionProfile,
     AulaProfile,
     AulaCalendarEvent,
@@ -59,7 +62,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             entities.append(AulaWeeklyPlanCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
             entities.append(AulaBirthdayCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
 
-    # if data_coordinator.data
+    if data_coordinator.easyiq_weekplan_supported():
+        for child in data_coordinator.data.children:
+            entities.append(AulaEasyiqWeekplanCalendar(calendar_coordinator, data_coordinator, child, child.institution_profile))
+
     async_add_entities(entities)
 
 class AulaBirthdayCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
@@ -399,4 +405,80 @@ class AulaWeeklyPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ig
             start=start_date,
             end=end_date,
             description=None if len(description.strip()) == 0 else description,
+        )
+
+
+class AulaEasyiqWeekplanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
+    """A calendar entity for EasyIQ weekly plans (widget 0001)."""
+    _profile: AulaChildProfile
+    _institution: AulaInstitutionProfile
+    _data_coordinator: AulaDataCoordinator
+
+    def __init__(self, calendar_coordinator: AulaCalendarCoordinator, data_coordinator: AulaDataCoordinator, profile: AulaChildProfile, institution: AulaInstitutionProfile):
+        super().__init__(calendar_coordinator, name="easyiq_weekplan")
+        self._data_coordinator = data_coordinator
+        self._profile = profile
+        first_name = profile.first_name
+        institution_name = institution.institution_name
+        self._attr_unique_id = f"{self._attr_unique_id}_{first_name}_{institution_name}"
+        self._attr_translation_placeholders = { "name": first_name, "institution": institution_name }
+
+    async def async_will_remove_from_hass(self):
+        await self.coordinator.async_remove_easyiq_weekplan_key(self._profile)
+        return await super().async_will_remove_from_hass()
+
+    async def async_added_to_hass(self):
+        await self.coordinator.async_add_easyiq_weekplan_key(self._profile)
+        return await super().async_added_to_hass()
+
+    def _handle_data_updated(self, data: AulaCalendarCoordinatorData) -> bool:
+        if self._profile.id in data.updated_easyiq_weekplans_for_listener_keys:
+            return True
+        return False
+
+    @property
+    def event(self) -> CalendarEvent | None:
+        current_time = now()
+        plans = self.coordinator.get_easyiq_weekly_plans(self._profile)
+        for plan, dayplan, event in self._plans_iterable(plans):
+            event_end = datetime.combine(dayplan.date, event.end_time)
+            if event_end >= current_time:
+                return self._create_calendar_event(dayplan, event)
+        return None
+
+    async def async_get_events(self, hass: HomeAssistant, start_date: datetime, end_date: datetime) -> List[CalendarEvent]:
+        plans = await self.coordinator.get_easyiq_weekly_plans_for_interval([self._profile], start_date, end_date)
+        events = list[CalendarEvent]()
+        for plan, dayplan, event in self._plans_iterable(plans):
+            calendar_event = self._create_calendar_event(dayplan, event)
+            if _is_event_in_range(calendar_event, start_date, end_date):
+                events.append(calendar_event)
+        return events
+
+    def _plans_iterable(self, plans: List[AulaEasyiqWeeklyPlan]):
+        for plan in plans:
+            for dayplan in plan.daily_plans:
+                for event in dayplan.events:
+                    yield plan, dayplan, event
+
+    def _create_calendar_event(self, dayplan: AulaEasyiqDailyPlan, event: AulaEasyiqEvent) -> CalendarEvent:
+        summary = event.title if event.title else event.description
+        if len(summary) > 75: summary = summary[:73] + "..."
+        summaryparts = summary.split("\n", 1)
+        summary = summaryparts[0]
+        if len(summaryparts) > 1: summary += " ..."
+
+        description = event.description
+        if event.owner_name:
+            description = f"{event.owner_name}\n{description}" if description else event.owner_name
+
+        start = datetime.combine(dayplan.date, event.start_time)
+        end = datetime.combine(dayplan.date, event.end_time)
+
+        return CalendarEvent(
+            uid=str(event.id),
+            summary=summary,
+            start=start,
+            end=end,
+            description=None if not description or len(description.strip()) == 0 else description,
         )

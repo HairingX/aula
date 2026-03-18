@@ -15,6 +15,7 @@ from .aula_proxy.models.module import (
     AulaBirthdayEvent,
     AulaCalendarEvent,
     AulaChildProfile,
+    AulaEasyiqWeeklyPlan,
     AulaWeeklyPlan,
 )
 from .aula_client import AulaClient
@@ -22,11 +23,14 @@ from .aula_proxy.aula_errors import AulaCredentialError
 
 _LOGGER = logging.getLogger(__name__)
 
+EASYIQ_WEEKPLAN_UPDATE_INTERVAL = timedelta(hours=6)
+
 @dataclass
 class AulaCalendarCoordinatorData:
     updated_birthdays_for_listener_keys: List[int]
     updated_events_for_listener_keys: List[int]
     updated_weekly_plans_for_listener_keys: List[int]
+    updated_easyiq_weekplans_for_listener_keys: List[int]
 
 T = TypeVar("T", AulaInstitutionProfile, AulaChildProfile)
 class AulaCalendarCoordinatorMeta[T]:
@@ -44,11 +48,13 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
     """My custom coordinator."""
     _birthdaymap: dict[int, List[AulaBirthdayEvent]]
     _weeklyplanmap: dict[int, List[AulaWeeklyPlan]]
+    _easyiqweekplanmap: dict[int, List[AulaEasyiqWeeklyPlan]]
     _eventmap: dict[int, List[AulaCalendarEvent]]
     _client: AulaClient
     _birthday_listeners: dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]
     _event_listeners: dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]]
     _weekly_plan_listeners: dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]
+    _easyiq_weekplan_listeners: dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]
 
     def __init__(self, device_id: str, hass: HomeAssistant, client: AulaClient, config_entry: ConfigEntry):
         """Initialize my coordinator."""
@@ -69,9 +75,11 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         self._birthdaymap = dict()
         self._eventmap = dict()
         self._weeklyplanmap = dict()
+        self._easyiqweekplanmap = dict()
         self._birthday_listeners = dict()
         self._event_listeners = dict()
         self._weekly_plan_listeners = dict()
+        self._easyiq_weekplan_listeners = dict()
         self._client = client
         self.device_id = device_id
         self.aula_version = client.aula_version
@@ -112,7 +120,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
                 # listening_ids = set(self.async_contexts())
 
                 # always retrieve profiles first
-                data = await self.hass.async_add_executor_job(self._fetch_data, self._birthday_listeners, self._event_listeners, self._weekly_plan_listeners)
+                data = await self.hass.async_add_executor_job(self._fetch_data, self._birthday_listeners, self._event_listeners, self._weekly_plan_listeners, self._easyiq_weekplan_listeners)
                 if isinstance(data, Exception):
                     raise data
                 return data
@@ -126,7 +134,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
             else:
                 raise UpdateFailed from error
 
-    def _fetch_data(self, birthdaylisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]], eventlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]], weekplanlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]) -> AulaCalendarCoordinatorData|Exception:
+    def _fetch_data(self, birthdaylisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]], eventlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]], weekplanlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]], easyiqweekplanlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]) -> AulaCalendarCoordinatorData|Exception:
         try:
             logindata = self._client.login()
             self.aula_version = logindata.api_version
@@ -140,10 +148,14 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
             new_weeklyplanmap, new_weeklyplan_keys = self._fetch_weekly_plans(weekplanlisteners)
             self._weeklyplanmap = new_weeklyplanmap
 
+            new_easyiqweekplanmap, new_easyiq_keys = self._fetch_easyiq_weekly_plans(easyiqweekplanlisteners)
+            self._easyiqweekplanmap = new_easyiqweekplanmap
+
             data = AulaCalendarCoordinatorData(
                 updated_birthdays_for_listener_keys= new_birtyday_keys,
                 updated_events_for_listener_keys = new_event_keys,
-                updated_weekly_plans_for_listener_keys = new_weeklyplan_keys
+                updated_weekly_plans_for_listener_keys = new_weeklyplan_keys,
+                updated_easyiq_weekplans_for_listener_keys = new_easyiq_keys,
             )
 
             for key in new_birtyday_keys:
@@ -160,6 +172,11 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
                 meta = weekplanlisteners.get(key)
                 if meta: meta.last_updated = now()
                 else: _LOGGER.warning(f"Out of sync with weekplan listeners. {key} could not be found, even though it received new data")
+
+            for key in new_easyiq_keys:
+                meta = easyiqweekplanlisteners.get(key)
+                if meta: meta.last_updated = now()
+                else: _LOGGER.warning(f"Out of sync with easyiq weekplan listeners. {key} could not be found, even though it received new data")
 
         except Exception as ex:
             _LOGGER.error(ex)
@@ -309,3 +326,50 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         return (new_weeklyplanmap, [inst.id for inst in request_data_institutions])
 
     #endregion Weekly Plans
+
+    #region EasyIQ Weekly Plans
+
+    async def get_easyiq_weekly_plans_for_interval(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaEasyiqWeeklyPlan]:
+        return await self.hass.async_add_executor_job(self._client.get_easyiq_weekly_plans, profiles, start_datetime, end_datetime)
+
+    def get_easyiq_weekly_plans(self, profile: AulaChildProfile) -> List[AulaEasyiqWeeklyPlan]:
+        key = profile.id
+        if key not in self._easyiq_weekplan_listeners:
+            raise KeyError(f"Listener not found for the easyiq_weekplan key. Ensure you add the key when component is added to HASS (async_add_easyiq_weekplan_key), and remove when component is removed from HASS (async_remove_easyiq_weekplan_key)")
+        return self._easyiqweekplanmap.get(key, [])
+
+    async def async_add_easyiq_weekplan_key(self, profile: AulaChildProfile) -> None:
+        id = profile.id
+        meta = self._easyiq_weekplan_listeners.setdefault(id, AulaCalendarCoordinatorMeta[AulaChildProfile]())
+        _LOGGER.debug(f"async_add_easyiq_weekplan_key {id}")
+        meta.keys.append(profile)
+        self._easyiqweekplanmap.setdefault(id, [])
+        await self.async_refresh()
+
+    async def async_remove_easyiq_weekplan_key(self, profile: AulaChildProfile) -> None:
+        id = profile.id
+        meta = self._easyiq_weekplan_listeners.get(id)
+        if meta is None: return
+        meta.keys.remove(profile)
+        _LOGGER.debug(f"async_remove_easyiq_weekplan_key {id}")
+        if len(meta.keys) == 0:
+            self._easyiq_weekplan_listeners.pop(id)
+            self._easyiqweekplanmap.pop(id)
+
+    def _fetch_easyiq_weekly_plans(self, listeners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]):
+        request_data_profiles = list[AulaChildProfile]()
+        new_easyiqmap = dict[int, List[AulaEasyiqWeeklyPlan]]()
+        for (id, meta) in listeners.items():
+            if meta.last_updated is None or meta.last_updated < now() - EASYIQ_WEEKPLAN_UPDATE_INTERVAL or meta.last_updated.date() < now().date():
+                request_data_profiles.append(meta.keys[0])
+            else:
+                new_easyiqmap[id] = self._easyiqweekplanmap.get(id, list[AulaEasyiqWeeklyPlan]())
+
+        for profile in request_data_profiles:
+            plans = self._client.get_easyiq_weekly_plans([profile], now(), now() + SYNC_EVENT_MAX_TIME)
+            _LOGGER.debug(f"Fetching easyiq weekplans for id: {profile.id}, got {len(plans)} plans")
+            new_easyiqmap[profile.id] = plans
+
+        return (new_easyiqmap, [p.id for p in request_data_profiles])
+
+    #endregion EasyIQ Weekly Plans

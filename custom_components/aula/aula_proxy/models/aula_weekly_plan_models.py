@@ -10,7 +10,7 @@ class AulaDailyPlanTask:
     content: The task content/description (in younger classes, often describes the day's work/activities)
     group: The class/group name. Freeform text, e.g. "1A", "1a matematik"
     id: Unique task ID
-    pill: Subject label, e.g. "Matematik", "Dansk". Meebook-specific field. Empty string for other backends.
+    pill: Subject label, e.g. "Matematik", "Dansk". Used as a category/tag in the Aula UI.
     type: Task type. Known values:
         - "task": An assignment that must be completed (shown with clock icon in Aula)
         - "comment": Informational comment (shown with info icon in Aula)
