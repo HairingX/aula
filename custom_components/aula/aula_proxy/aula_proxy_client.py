@@ -2,14 +2,12 @@ import calendar
 from bs4 import BeautifulSoup
 from http import HTTPStatus
 from requests import Response, Session
+from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout as RequestsTimeout
 from typing import Any, Dict, Iterable, List
 from datetime import datetime, timedelta, date
 import json, re
 import logging
 import pytz
-import requests
-
-
 from .aula_errors import ParseError, AulaCredentialError
 from .models.constants import AulaWidgetId
 from .models.module import *
@@ -23,21 +21,28 @@ from .responses.get_profile_master_data_response import AulaGetProfileMasterData
 from .responses.get_profiles_by_login_response import AulaGetProfilesByLoginResponse
 from .responses.get_weekly_plans_response import AulaGetWeeklyPlansResponse
 from .responses.get_birthday_events_for_institutions import AulaGetBirthdayEventsForInstitutionsResponse
-# from .responses.get_weekly_newsletter_response import AulaGetWeeklyNewsletterResponse
 from .const import (
     API,
     API_VERSION,
-    # MIN_UDDANNELSE_API,
-    # SYSTEMATIC_API,
-    # EASYIQ_API,
+    EASYIQ_API,
     MEEBOOK_API,
+    MIN_UDDANNELSE_API,
+    SYSTEMATIC_API,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 REQUEST_MAX_ATTEMPTS = 3
 """Maximum number of attempts for requests, when certain errors occurs, such as timeout."""
+REQUEST_TIMEOUT = 30
+"""Default timeout in seconds for all HTTP requests."""
 TOKEN_EXPIRATION_TIME = timedelta(minutes=40)
+
+class _TimeoutSession(Session):
+    """A requests.Session that applies a default timeout to all requests."""
+    def request(self, method: str, url: str, *args: Any, **kwargs: Any) -> Response:  # type: ignore[override]
+        kwargs.setdefault("timeout", REQUEST_TIMEOUT)
+        return super().request(method, url, *args, **kwargs)
 
 class AulaProxyClient:
     api_version:int = int(API_VERSION)
@@ -53,7 +58,7 @@ class AulaProxyClient:
     def __init__(self, username:str, password:str):
         self._username = username
         self._password = password
-        self._session = requests.Session()
+        self._session = _TimeoutSession()
         self._tokens = dict()
 
 
@@ -340,7 +345,11 @@ class AulaProxyClient:
         # _LOGGER.debug("Calendar post-data: "+str(post_data))
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
-            response = self._session.get(requesturl, headers=headers, verify=True)
+            try:
+                response = self._session.get(requesturl, headers=headers, verify=True)
+            except (RequestsTimeout, RequestsConnectionError) as e:
+                self._handle_request_exception(e, attempt, api_method)
+                continue
             if not self._should_retry_request(response, attempt):
                 break
         if response == None or response.status_code != HTTPStatus.OK:
@@ -382,7 +391,11 @@ class AulaProxyClient:
         # _LOGGER.debug("Calendar post-data: "+str(post_data))
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
-            response = self._session.post(requesturl, json=post_data, headers=headers, verify=True)
+            try:
+                response = self._session.post(requesturl, json=post_data, headers=headers, verify=True)
+            except (RequestsTimeout, RequestsConnectionError) as e:
+                self._handle_request_exception(e, attempt, api_method)
+                continue
             if not self._should_retry_request(response, attempt):
                 break
         if response == None or response.status_code != HTTPStatus.OK:
@@ -414,7 +427,11 @@ class AulaProxyClient:
 
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
-            response = self._session.get(requesturl, headers=headers, verify=True)
+            try:
+                response = self._session.get(requesturl, headers=headers, verify=True)
+            except (RequestsTimeout, RequestsConnectionError) as e:
+                self._handle_request_exception(e, attempt, api_method)
+                continue
             if not self._should_retry_request(response, attempt):
                 break
         if response == None or response.status_code != HTTPStatus.OK:
@@ -448,7 +465,11 @@ class AulaProxyClient:
 
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
-            response = self._session.get(requesturl, headers=headers, verify=True)
+            try:
+                response = self._session.get(requesturl, headers=headers, verify=True)
+            except (RequestsTimeout, RequestsConnectionError) as e:
+                self._handle_request_exception(e, attempt, api_method)
+                continue
             if not self._should_retry_request(response, attempt):
                 break
         if response == None or response.status_code != HTTPStatus.OK:
@@ -486,7 +507,11 @@ class AulaProxyClient:
 
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
-            response = self._session.get(requesturl, headers=headers, verify=True)
+            try:
+                response = self._session.get(requesturl, headers=headers, verify=True)
+            except (RequestsTimeout, RequestsConnectionError) as e:
+                self._handle_request_exception(e, attempt, api_method)
+                continue
             if not self._should_retry_request(response, attempt):
                 break
         if response == None or response.status_code != HTTPStatus.OK:
@@ -520,7 +545,11 @@ class AulaProxyClient:
 
         response: Response|None = None
         for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
-            response = self._session.get(requesturl, headers=headers, verify=True)
+            try:
+                response = self._session.get(requesturl, headers=headers, verify=True)
+            except (RequestsTimeout, RequestsConnectionError) as e:
+                self._handle_request_exception(e, attempt, api_method)
+                continue
             if not self._should_retry_request(response, attempt):
                 break
         if response == None or response.status_code != HTTPStatus.OK:
@@ -563,7 +592,11 @@ class AulaProxyClient:
             from_date = from_datetime.date()
             weekno = self._get_aula_week_formatted(from_date)
             for attempt in range(1, REQUEST_MAX_ATTEMPTS+1):
-                response = self._session.get(requesturl.format(weekno=weekno), headers=headers, verify=True)
+                try:
+                    response = self._session.get(requesturl.format(weekno=weekno), headers=headers, verify=True)
+                except (RequestsTimeout, RequestsConnectionError) as e:
+                    self._handle_request_exception(e, attempt, "relatedweekplan")
+                    continue
                 if not self._should_retry_request(response, attempt):
                     break
             if response == None or response.status_code != HTTPStatus.OK:
@@ -980,6 +1013,13 @@ class AulaProxyClient:
     def _is_last_attempt(attempt: int) -> bool:
         """Check if the current retry attempt is the last one"""
         return attempt >= REQUEST_MAX_ATTEMPTS
+
+    @staticmethod
+    def _handle_request_exception(e: Exception, attempt: int, api_method: str) -> None:
+        """Handle timeout/connection errors in retry loops. Re-raises on last attempt."""
+        if AulaProxyClient._is_last_attempt(attempt):
+            raise
+        _LOGGER.debug(f"Request for {api_method} failed ({type(e).__name__}), will retry (attempt {attempt}/{REQUEST_MAX_ATTEMPTS})")
 
     @staticmethod
     def _should_retry_request(response: Response, attempt: int) -> bool:
