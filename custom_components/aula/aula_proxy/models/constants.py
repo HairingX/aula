@@ -36,3 +36,29 @@ class AulaCalendarEventType(StrEnum):
     PARENTAL_MEETING = 'parental_meeting'
     PERFORMANCE_MEETING = 'performance_meeting'
     VACATION_REGISTRATION = 'vacation_registration'
+
+
+CALENDAR_EVENT_ICON: dict[str, str] = {
+    AulaCalendarEventType.BIRTHDAY: "🎁",
+    AulaCalendarEventType.LESSON: "",
+    AulaCalendarEventType.EVENT: "⭐",
+    AulaCalendarEventType.HOLIDAY: "🏖️",
+    AulaCalendarEventType.PRESENCE_HOLIDAY: "🏖️",
+    AulaCalendarEventType.EXCURSION: "🚌",
+    AulaCalendarEventType.SCHOOL_HOME_MEETING: "👥",
+    AulaCalendarEventType.PARENTAL_MEETING: "👥",
+    AulaCalendarEventType.PERFORMANCE_MEETING: "👥",
+    AulaCalendarEventType.VACATION_REGISTRATION: "🏖️",
+    AulaCalendarEventType.OTHER: "📌",
+}
+
+
+class AulaWeeklyPlanTaskType(StrEnum):
+    TASK = "task"
+    COMMENT = "comment"
+
+
+WEEKLY_PLAN_TASK_ICON: dict[str, str] = {
+    AulaWeeklyPlanTaskType.TASK: "⏰",
+    AulaWeeklyPlanTaskType.COMMENT: "ℹ️",
+}

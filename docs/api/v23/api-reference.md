@@ -539,8 +539,8 @@ Returns today's presence status for children.
 | `id` | int | Overview ID |
 | `institutionProfile` | [InstitutionProfileBrief](#institutionprofilebrief) | Child's profile |
 | `mainGroup` | [GroupDetailed](#groupdetailed) | |
-| `status` | int | Presence state code (see [Presence States](#presence-state-codes)) |
-| `location` | string\|null | |
+| `status` | int | Presence state code (see [Presence State Codes](#presence-state-codes)) |
+| `location` | [AulaLocation](#aulalocation)\|null | Location object when child has a location set |
 | `sleepIntervals` | array | |
 | `checkInTime` | string\|null | "HH:MM:SS" format |
 | `checkOutTime` | string\|null | "HH:MM:SS" format |
@@ -560,11 +560,7 @@ Returns today's presence status for children.
 
 #### Presence State Codes
 
-| Code | Meaning |
-|---|---|
-| `8` | Checked out |
-
-(Other codes not observed in this capture)
+Only status `8` was observed in the v23 capture (both children had been picked up). The full range of status codes is not documented by the API itself.
 
 ---
 
@@ -1198,6 +1194,25 @@ Returns Meebook notifications for Aula widget.
 
 ## Shared Types
 
+### AulaLocation
+
+Object returned when a child has a location set (e.g. on a field trip). Corresponds to `AulaLocation` dataclass in `aula_profile_models.py`.
+
+| Property | Type | Description |
+|---|---|---|
+| `id` | int | Location ID |
+| `name` | string | Location name |
+| `description` | string | Location description |
+| `icon` | string\|null | Icon identifier |
+| `startDate` | string\|null | Start date |
+| `startTime` | string\|null | Start time |
+| `endDate` | string\|null | End date |
+| `endTime` | string\|null | End time |
+
+> Note: `location` was `null` for all children in the v23 capture. This structure is based on the existing codebase parser (`AulaLocation` dataclass) and may have additional fields when populated.
+
+---
+
 ### Address
 
 | Property | Type | Description |
@@ -1314,3 +1329,196 @@ Params: `userProfile`, `assuranceLevel`, `childFilter`
 **GET** `https://api.ibkservices.dk/?institutionsnummer=<codes>&userprofile=<role>`
 
 Returns widget availability per institution.
+
+---
+
+## Observed Enum Values
+
+Complete list of all enum/state values observed in the v23 capture.
+
+### Presence Status / State Codes
+
+Only `8` was observed in v23 capture. No official documentation of the full range exists.
+
+### activityType
+
+| Code | Meaning |
+|---|---|
+| `0` | Normal |
+
+### role
+
+`"child"`, `"employee"`, `"guardian"`, `"indirect"`, `"member"`
+
+### institutionRole
+
+`"daycare"`, `"early-student"`, `"guardian"`, `"leader"`, `"other"`, `"preschool-teacher"`, `"teacher"`
+
+### institutionType
+
+`"Daycare"`, `"Municipality"`, `"School"`
+
+### portalRole
+
+`"employee"`, `"guardian"`
+
+### gender
+
+`"F"`, `"M"`
+
+### relation
+
+`"Far"`, `"Mor"`
+
+### Calendar Event Types
+
+`"birthday"`, `"event"`, `"excursion"`, `"holiday"`, `"lesson"`, `"other"`, `"parental_meeting"`, `"performance_meeting"`, `"presence_holiday"`, `"school_home_meeting"`
+
+### lessonStatus
+
+`"normal"`, `"substitute"`
+
+### participantRole
+
+`"primaryTeacher"`, `"substituteTeacher"`
+
+### responseStatus (calendar)
+
+`"accepted"`, `"waiting"`
+
+### messageType
+
+`"Message"`
+
+### subscriptionType
+
+`"bundle"`, `"unbundled"`
+
+### threadType
+
+`"thread"`, `"vacation_request_reminder"`
+
+### folderType
+
+`"normal"`
+
+### Messaging folder type
+
+`"deleted"`
+
+### profileStatus
+
+`"active"`
+
+### contactType
+
+`"profile"`
+
+### scanningStatus
+
+`"bypassed"`
+
+### repeatPattern
+
+`"never"`, `"weekly"`
+
+### Consent allowedAnswers
+
+`"class_or_stue"`, `"institution"`, `"not_at_all"`, `"year_and_sfo"`
+
+### consentResponseStatus
+
+`"active"`
+
+### Presence Module Types
+
+`"daily_message"`, `"drop_off_time"`, `"field_trip"`, `"location"`, `"pickup_times"`, `"pickup_type"`, `"report_sick"`, `"sleep"`, `"spare_time_activity"`, `"vacation"`
+
+### Presence Module Permissions
+
+`"deactivated"`, `"editable"`, `"readable"`
+
+### presenceDashboardContext
+
+`"check_in_dashboard"`, `"employee_dashboard"`, `"guardian_dashboard"`
+
+### uniGroupType
+
+`""`, `"Hovedgruppe"`, `"SFO"`
+
+### mailBoxOwnerType
+
+`"institutionProfile"`
+
+### Widget scope
+
+`"Central"`, `"Institution"`, `"Municipality"`
+
+### Widget placement
+
+`"Default"`, `"LeftMenu"`, `"RightOfOverview"`
+
+### Widget suppliers
+
+`"Hjernen&Hjertet"`, `"IBK"`, `"IST"`, `"Meebook"`, `"NCT"`
+
+### Opening hours type
+
+`"general_opening_hours"`
+
+### Meebook types
+
+| Field | Values |
+|---|---|
+| `weekplan event type` | `"comment"`, `"task"` |
+| `notification type` | `"annualplan_published"` |
+| `senderType` | `"teacher"` |
+| `usertype` | `"related"` |
+| `mediaType` | `"image"` |
+| `conversionStatus` | `"completed"` |
+
+### Group/membership types
+
+| Field | Values |
+|---|---|
+| `groupType` | `"institutional"`, `"municipal"`, `"uni"` |
+| `membershipType` | `"direct"`, `"indirect"` |
+
+---
+
+## Widget IDs Observed
+
+Tokens were requested for these widget IDs during the v23 capture:
+
+| Widget ID | Observed | Known Supplier |
+|---|---|---|
+| `0003` | Yes | Meebook |
+| `0004` | Yes | Meebook |
+| `0040` | Yes | Hjernen&Hjertet |
+| `0047` | Yes | IST |
+| `0119` | Yes | Meebook |
+| `0147` | Yes | Unknown |
+
+---
+
+## Official Documentation Sources
+
+Aula has **no public REST API documentation** for the `aula.dk/api/v23/` endpoints. The API is internal to the Aula SPA (Single Page Application) and not intended for third-party use.
+
+### Available Official Documentation
+
+| Document | URL | Content |
+|---|---|---|
+| **T0150 Widget Guide** | [PDF](https://backend.aulainfo.dk/media/cabl3kdt/t0150-widget-guide.pdf) | How to develop, test, and submit widgets for Aula. Covers widget lifecycle, authentication via JWT (aulaToken), and communication between widget iframe and Aula SPA. |
+| **T0150 Widget Local Development** | [PDF](https://backend.aulainfo.dk/media/i4hf1nxm/t0150-widget-local-development.pdf) | Local development setup for widget developers. |
+| **Aula Admin Guide** | [PDF](https://backend.aulainfo.dk/media/1mlgadpo/aula-administratorvejledning.pdf) | Administrator guide (Feb 2026, v2.15) |
+| **Aula User Guide** | [PDF](https://backend.aulainfo.dk/media/hnse40ic/aula-brugervejledning.pdf) | User guide (Oct 2025, v2.14) |
+| **Widgets in Aula** | [aulainfo.dk](https://aulainfo.dk/tag/widgets/) | Widget overview and supplier info |
+| **KOMBIT Aula** | [kombit.dk](https://kombit.dk/loesninger/aula) | Official KOMBIT Aula page |
+
+### Key Facts
+
+- The REST API (`aula.dk/api/v23/?method=...`) is **not publicly documented**. All knowledge comes from reverse engineering (HAR captures, browser DevTools).
+- **Widget development** is the only officially documented integration path. Widgets run in an iframe and receive a JWT token via `aulaToken.getAulaToken`. KOMBIT must approve all widgets.
+- **Presence state codes** are not officially documented. Only code `8` was observed in this capture.
+- Widget suppliers contact: `aula@kombit.dk`

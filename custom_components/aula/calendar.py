@@ -13,7 +13,7 @@ import logging
 from .aula_calendar_coordinator import AulaCalendarCoordinator, AulaCalendarCoordinatorData
 from .aula_data import get_aula_calendar_coordinator, get_aula_data_coordinator
 from .aula_data_coordinator import AulaDataCoordinator
-from .aula_proxy.models.constants import AulaCalendarEventType
+from .aula_proxy.models.constants import AulaCalendarEventType, CALENDAR_EVENT_ICON, WEEKLY_PLAN_TASK_ICON
 from .aula_proxy.utils.list_utils import list_without_none
 from .aula_proxy.models.module import (
     AulaBirthdayEvent,
@@ -107,7 +107,8 @@ class AulaBirthdayCalendar(AulaCalendarEntityBase, CalendarEntity): # type: igno
 
     def _create_calendar_event(self, event: AulaBirthdayEvent) -> CalendarEvent:
         age = self._get_age(event)
-        summary = f"{event.full_name} ({event.main_group_name}) turns {age} 🎁"
+        icon = CALENDAR_EVENT_ICON.get(AulaCalendarEventType.BIRTHDAY, "")
+        summary = f"{icon} {event.full_name} ({event.main_group_name}) turns {age}"
         description = ""
         start_date = self._get_event_start(event)
         end_date = start_date + timedelta(days=1)
@@ -195,6 +196,7 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
 
     def _create_calendar_event(self, event: AulaCalendarEvent) -> CalendarEvent|None:
         """Return a CalendarEvent from an API event."""
+        icon = CALENDAR_EVENT_ICON.get(event.type, "")
         summary = event.title
         description = ""
         start_datetime = event.start_datetime
@@ -235,6 +237,8 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
             )
             if initials:
                 summary = f"{summary} ({initials})"
+            if event.lesson.lesson_status == "substitute":
+                summary = f"{summary} - Vikar"
             teachers = ", ".join(
                 p.teacher_name for p in event.lesson.participants if p.teacher_name
             )
@@ -242,6 +246,19 @@ class AulaEventCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ignore
                 if description:
                     description += "\n"
                 description += teachers
+
+        RESPONSE_STATUS_LABELS: dict[str, str] = {
+            "waiting": "Afventer svar",
+            "accepted": "Accepteret",
+            "declined": "Afvist",
+        }
+        if event.response_status and event.response_status != "accepted":
+            label = RESPONSE_STATUS_LABELS.get(event.response_status, event.response_status)
+            if description:
+                description += "\n"
+            description += f"Status: {label}"
+
+        summary = f"{icon} {summary}" if icon else summary
 
         return CalendarEvent(
             uid=str(event.id),
@@ -399,12 +416,26 @@ class AulaWeeklyPlanCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ig
 
     def _create_calendar_event(self, weekplan: AulaWeeklyPlan, dailyplan: AulaDailyPlan, task: AulaDailyPlanTask) -> CalendarEvent:
         """Return a CalendarEvent from a API weekplan."""
+        icon = WEEKLY_PLAN_TASK_ICON.get(task.type, "")
         summary = task.title if task.title else task.content
         if len(summary) > 75: summary = summary[:73] + "..."
         summaryparts = summary.split("\n", 1)
         summary = summaryparts[0]
         if len(summaryparts) > 1: summary += " ..."
-        description = (task.title + "\n" + task.content) if task.title else task.content
+        if task.pill:
+            summary = f"[{task.pill}] {summary}"
+        summary = f"{icon} {summary}" if icon else summary
+
+        description_parts: list[str] = []
+        if task.title:
+            description_parts.append(task.title)
+        description_parts.append(task.content)
+        if task.group:
+            description_parts.append(task.group)
+        if task.author:
+            description_parts.append(task.author)
+        description = "\n".join(description_parts)
+
         start_date = dailyplan.date
         end_date = start_date + timedelta(days=1)
 
