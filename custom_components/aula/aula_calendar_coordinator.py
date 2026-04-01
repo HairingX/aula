@@ -24,8 +24,21 @@ from .aula_proxy.aula_errors import AulaCredentialError
 
 _LOGGER = logging.getLogger(__name__)
 
-EASYIQ_WEEKPLAN_UPDATE_INTERVAL = timedelta(hours=6)
-NEWSLETTER_UPDATE_INTERVAL = timedelta(hours=6)
+# Coordinator polling interval (how often HA calls _async_update_data)
+COORDINATOR_POLL_INTERVAL = timedelta(minutes=10)
+
+# Per-data-type refresh intervals (how often we actually fetch fresh data from Aula)
+BIRTHDAYS_UPDATE_INTERVAL = timedelta(days=1)
+EVENTS_UPDATE_INTERVAL = timedelta(hours=2)
+WEEKLY_PLANS_UPDATE_INTERVAL = timedelta(hours=2)
+EASYIQ_WEEKPLAN_UPDATE_INTERVAL = timedelta(hours=2)
+NEWSLETTER_UPDATE_INTERVAL = timedelta(hours=2)
+
+# How far ahead to sync calendar data
+SYNC_EVENT_MAX_TIME = timedelta(weeks=2)
+
+# Number of consecutive fetch failures before raising UpdateFailed
+MAX_CONSECUTIVE_FAILURES = 3
 
 @dataclass
 class AulaCalendarCoordinatorData:
@@ -41,11 +54,6 @@ class AulaCalendarCoordinatorMeta[T]:
     last_updated: datetime.datetime|None = None
     def __init__(self):
         self.keys = []
-
-BIRTHDAYS_UPDATE_INTERVAL = timedelta(days=1)
-EVENTS_UPDATE_INTERVAL = timedelta(hours=6)
-WEEKLY_PLANS_UPDATE_INTERVAL = timedelta(hours=6)
-SYNC_EVENT_MAX_TIME = timedelta(weeks=2)
 
 class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]):
     """My custom coordinator."""
@@ -71,7 +79,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
             config_entry=config_entry,
             # Polling interval. Will only be polled if there are subscribers.
             # We poll often, but limit the data update with DATA_UPDATE_INTERVAL. We want data to refresh past midnight no matter the interval.
-            update_interval=timedelta(minutes=10),
+            update_interval=COORDINATOR_POLL_INTERVAL,
             # Set always_update to `False` if the data returned from the
             # api can be compared via `__eq__` to avoid duplicate updates
             # being dispatched to listeners
@@ -87,6 +95,7 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         self._weekly_plan_listeners = dict()
         self._easyiq_weekplan_listeners = dict()
         self._newsletter_listeners = dict()
+        self._consecutive_failures = 0
         self._client = client
         self.device_id = device_id
         self.aula_version = client.aula_version
@@ -142,63 +151,95 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
                 raise UpdateFailed from error
 
     def _fetch_data(self, birthdaylisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]], eventlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaInstitutionProfile]], weekplanlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]], easyiqweekplanlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]], newsletterlisteners: Dict[int, AulaCalendarCoordinatorMeta[AulaChildProfile]]) -> AulaCalendarCoordinatorData|Exception:
+        # Login is required for all fetches — if this fails, nothing works
         try:
             logindata = self._client.login()
             self.aula_version = logindata.api_version
+        except Exception as ex:
+            _LOGGER.error(f"Login failed: {ex}")
+            return ex
 
+        # Fetch each data type independently — a failure in one does not affect the others
+        had_failure = False
+
+        new_birtyday_keys = list[int]()
+        try:
             new_birthdaymap, new_birtyday_keys = self._fetch_birthdays(birthdaylisteners)
             self._birthdaymap = new_birthdaymap
+        except Exception as ex:
+            had_failure = True
+            _LOGGER.warning(f"Failed to fetch birthdays, using cached data: {ex}")
 
+        new_event_keys = list[int]()
+        try:
             new_eventmap, new_event_keys = self._fetch_events(eventlisteners)
             self._eventmap = new_eventmap
+        except Exception as ex:
+            had_failure = True
+            _LOGGER.warning(f"Failed to fetch events, using cached data: {ex}")
 
+        new_weeklyplan_keys = list[int]()
+        try:
             new_weeklyplanmap, new_weeklyplan_keys = self._fetch_weekly_plans(weekplanlisteners)
             self._weeklyplanmap = new_weeklyplanmap
+        except Exception as ex:
+            had_failure = True
+            _LOGGER.warning(f"Failed to fetch weekly plans, using cached data: {ex}")
 
+        new_easyiq_keys = list[int]()
+        try:
             new_easyiqweekplanmap, new_easyiq_keys = self._fetch_easyiq_weekly_plans(easyiqweekplanlisteners)
             self._easyiqweekplanmap = new_easyiqweekplanmap
+        except Exception as ex:
+            had_failure = True
+            _LOGGER.warning(f"Failed to fetch EasyIQ weekplans, using cached data: {ex}")
 
+        new_newsletter_keys = list[int]()
+        try:
             new_newslettermap, new_newsletter_keys = self._fetch_newsletters(newsletterlisteners)
             self._newslettermap = new_newslettermap
-
-            data = AulaCalendarCoordinatorData(
-                updated_birthdays_for_listener_keys= new_birtyday_keys,
-                updated_events_for_listener_keys = new_event_keys,
-                updated_weekly_plans_for_listener_keys = new_weeklyplan_keys,
-                updated_easyiq_weekplans_for_listener_keys = new_easyiq_keys,
-                updated_newsletters_for_listener_keys = new_newsletter_keys,
-            )
-
-            for key in new_birtyday_keys:
-                meta = birthdaylisteners.get(key)
-                if meta: meta.last_updated = now()
-                else: _LOGGER.warning(f"Out of sync with birthday listeners. {key} could not be found, even though it received new data")
-
-            for key in new_event_keys:
-                meta = eventlisteners.get(key)
-                if meta: meta.last_updated = now()
-                else: _LOGGER.warning(f"Out of sync with event listeners. {key} could not be found, even though it received new data")
-
-            for key in new_weeklyplan_keys:
-                meta = weekplanlisteners.get(key)
-                if meta: meta.last_updated = now()
-                else: _LOGGER.warning(f"Out of sync with weekplan listeners. {key} could not be found, even though it received new data")
-
-            for key in new_easyiq_keys:
-                meta = easyiqweekplanlisteners.get(key)
-                if meta: meta.last_updated = now()
-                else: _LOGGER.warning(f"Out of sync with easyiq weekplan listeners. {key} could not be found, even though it received new data")
-
-            for key in new_newsletter_keys:
-                meta = newsletterlisteners.get(key)
-                if meta: meta.last_updated = now()
-                else: _LOGGER.warning(f"Out of sync with newsletter listeners. {key} could not be found, even though it received new data")
-
         except Exception as ex:
-            _LOGGER.error(ex)
-            return ex
-        # _LOGGER.debug(f"Coordinator fetched data: {data}")
-        return data
+            had_failure = True
+            _LOGGER.warning(f"Failed to fetch newsletters, using cached data: {ex}")
+
+        # Track consecutive failures — only raise after MAX_CONSECUTIVE_FAILURES
+        if had_failure:
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                self._consecutive_failures = 0
+                return Exception(f"Aula API failed {MAX_CONSECUTIVE_FAILURES} consecutive times")
+            _LOGGER.debug(f"Fetch had partial failures ({self._consecutive_failures}/{MAX_CONSECUTIVE_FAILURES} before unavailable)")
+        else:
+            self._consecutive_failures = 0
+
+        # Update last_updated for successful fetches
+        for key in new_birtyday_keys:
+            meta = birthdaylisteners.get(key)
+            if meta: meta.last_updated = now()
+
+        for key in new_event_keys:
+            meta = eventlisteners.get(key)
+            if meta: meta.last_updated = now()
+
+        for key in new_weeklyplan_keys:
+            meta = weekplanlisteners.get(key)
+            if meta: meta.last_updated = now()
+
+        for key in new_easyiq_keys:
+            meta = easyiqweekplanlisteners.get(key)
+            if meta: meta.last_updated = now()
+
+        for key in new_newsletter_keys:
+            meta = newsletterlisteners.get(key)
+            if meta: meta.last_updated = now()
+
+        return AulaCalendarCoordinatorData(
+            updated_birthdays_for_listener_keys=new_birtyday_keys,
+            updated_events_for_listener_keys=new_event_keys,
+            updated_weekly_plans_for_listener_keys=new_weeklyplan_keys,
+            updated_easyiq_weekplans_for_listener_keys=new_easyiq_keys,
+            updated_newsletters_for_listener_keys=new_newsletter_keys,
+        )
 
 
     #region Birthdays

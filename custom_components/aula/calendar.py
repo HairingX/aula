@@ -447,7 +447,7 @@ class AulaEasyiqWeekplanCalendar(AulaCalendarEntityBase, CalendarEntity): # type
         current_time = now()
         plans = self.coordinator.get_easyiq_weekly_plans(self._profile)
         for plan, dayplan, event in self._plans_iterable(plans):
-            event_end = datetime.combine(dayplan.date, event.end_time)
+            event_end = event.end
             if event_end >= current_time:
                 return self._create_calendar_event(dayplan, event)
         return None
@@ -478,8 +478,8 @@ class AulaEasyiqWeekplanCalendar(AulaCalendarEntityBase, CalendarEntity): # type
         if event.owner_name:
             description = f"{event.owner_name}\n{description}" if description else event.owner_name
 
-        start = datetime.combine(dayplan.date, event.start_time)
-        end = datetime.combine(dayplan.date, event.end_time)
+        start = event.start
+        end = event.end
 
         return CalendarEvent(
             uid=str(event.id),

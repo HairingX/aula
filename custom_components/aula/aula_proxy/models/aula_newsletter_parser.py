@@ -1,4 +1,5 @@
 from datetime import timedelta, date
+from hashlib import sha256
 from typing import List
 
 from ..responses.get_weekly_newsletter_response import (
@@ -34,7 +35,8 @@ class AulaNewsletterParser(AulaParser):
                 indhold = newsletter.get("indhold", "")
                 if not indhold:
                     continue
-                newsletter_id = hash(full_name + weekno + indhold[:50])
+                raw = "|".join([full_name, weekno, inst_name or "", indhold])
+                newsletter_id = sha256(raw.encode()).hexdigest()[:16]
                 newsletters.append(AulaNewsletter(
                     id=newsletter_id,
                     content_html=indhold,

@@ -1,11 +1,10 @@
 import calendar
-from bs4 import BeautifulSoup
 from http import HTTPStatus
 from requests import Response, Session
 from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout as RequestsTimeout
 from typing import Any, Dict, Iterable, List
 from datetime import datetime, timedelta, date
-import json, re
+import json
 import logging
 import pytz
 from .aula_errors import ParseError, AulaCredentialError
@@ -46,6 +45,22 @@ class _TimeoutSession(Session):
         kwargs.setdefault("timeout", REQUEST_TIMEOUT)
         return super().request(method, url, *args, **kwargs)
 
+
+class _TokenSession(_TimeoutSession):
+    """A session that appends access_token to Aula API URLs and handles CSRF optionally."""
+
+    _access_token: str = ""
+
+    def set_access_token(self, token: str) -> None:
+        self._access_token = token
+
+    def request(self, method: str, url: str, *args: Any, **kwargs: Any) -> Response:  # type: ignore[override]
+        if self._access_token and API in url:
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}access_token={self._access_token}"
+        return super().request(method, url, *args, **kwargs)
+
+
 class AulaProxyClient:
     api_version:int = int(API_VERSION)
 
@@ -54,25 +69,28 @@ class AulaProxyClient:
     _is_logged_in: bool = False
     _apiurl:str = ""
     _username:str = ""
-    _password:str = ""
-    _session:Session
+    _session:_TokenSession
 
-    def __init__(self, username:str, password:str):
-        self._username = username
-        self._password = password
-        self._session = _TimeoutSession()
+    def __init__(self, access_token: str, username_for_meebook: str = ""):
+        self._username = username_for_meebook
+        self._session = _TokenSession()
+        self._session.set_access_token(access_token)
         self._tokens = dict()
 
+    def update_token(self, new_token: str) -> None:
+        """Update the access token used for API calls."""
+        self._session.set_access_token(new_token)
 
-    def _get_csrf_token(self) -> str:
-        csrf_token = self._session.cookies.get_dict().get("Csrfp-Token")
-        if not csrf_token:
-            raise ConnectionError("CSRF token not found in session cookies. Session may have expired.")
-        return csrf_token
+
+    def _get_csrf_token(self) -> str | None:
+        """Get CSRF token from session cookies, or None if not available (token-based auth)."""
+        return self._session.cookies.get_dict().get("Csrfp-Token")
 
     def custom_api_call(self, uri:str, post_data:str|None) -> Dict[str,str]:
+        headers: Dict[str, str] = {"content-type": "application/json"}
         csrf_token = self._get_csrf_token()
-        headers = {"csrfp-token": csrf_token, "content-type": "application/json"}
+        if csrf_token:
+            headers["csrfp-token"] = csrf_token
         url = self._apiurl + uri
         _LOGGER.debug(f"custom_api_call: Making API call to {url}")
         if post_data == None:
@@ -102,23 +120,19 @@ class AulaProxyClient:
 
     def login(self) -> AulaLoginData:
         """
-        Logs into the Aula system and retrieves user profiles.
-        This method performs the following steps:
-        1. Attempts to log in using the session and API URL.
-        2. If the initial login attempt fails, it navigates through the login forms for non-employees and unilogin.
-        3. Fills out the necessary forms with username, password, and other required data.
-        4. Handles redirects and retries up to 10 times to complete the login process.
-        5. Finds the appropriate API URL in case of a version change.
-        6. Retrieves and parses user profiles from the Aula API.
-        7. Associates the user ID with each profile.
+        Verifies token-based authentication and retrieves user profiles.
+
+        Uses the access_token (appended automatically by _TokenSession) to call the
+        Aula API. Discovers the correct API version and fetches profiles, widgets,
+        and user context.
+
         Returns:
             AulaLoginData: Contains a list of user profiles, widgets, version etc.
         Raises:
-            ParseError: If the login form is not found or multiple actions are found in the HTML response.
-            AulaCredentialError: If access to the Aula API is denied or an unknown error occurs.
+            AulaCredentialError: If access to the Aula API is denied.
             ConnectionRefusedError: If the API URL is unreachable or an unknown error occurs.
         """
-        _LOGGER.debug("Logging in")
+        _LOGGER.debug("Logging in with token-based auth")
         self._is_logged_in = False
         if self._session and self._apiurl:
             login_responsedata = self._session.get(self._apiurl + "?method=profiles.getProfilesByLogin", verify=True).json()
@@ -128,116 +142,6 @@ class AulaProxyClient:
 
         if self._is_logged_in and self._login_result is not None:
             return self._login_result
-
-        #select login for non-employees (options: Non-employees / Employees)
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/112.0",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "da,en-US;q=0.7,en;q=0.3",
-            "DNT": "1",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-        }
-        params = {
-            "type": "unilogin",
-        }
-        non_employee_login_response = self._session.get(
-            "https://login.aula.dk/auth/login.php",
-            params=params,
-            headers=headers,
-            verify=True,
-        )
-        # _LOGGER.debug(f"Result from {non_employee_login_response.url}: {non_employee_login_response.text}")
-
-        #select unilogin (options: unilogin / MitID / Local login)
-        html = BeautifulSoup(non_employee_login_response.text, features="lxml")
-        if html.form is None:
-            _LOGGER.info(f"method=login response: {non_employee_login_response}")
-            _LOGGER.error("Login form not found in the HTML response.")
-            raise ParseError("Login form not found in the HTML response.")
-        url = html.form["action"]
-        if isinstance(url, list):
-            _LOGGER.info(f"method=login response: {non_employee_login_response}")
-            _LOGGER.error("Login form found multiple actions in the HTML response.")
-            _LOGGER.error(html)
-            raise ParseError("Login form found multiple actions in the HTML response.")
-        headers = {
-            "Host": "broker.unilogin.dk",
-            "User-Agent": self._get_user_agent(),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "da,en-US;q=0.7,en;q=0.3",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Origin": "null",
-            "DNT": "1",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "same-origin",
-            "Sec-Fetch-User": "?1",
-        }
-        data = {
-            "selectedIdp": "uni_idp",
-        }
-        uni_login_response = self._session.post(
-            url,
-            headers=headers,
-            data=data,
-            verify=True,
-        )
-        # _LOGGER.debug(f"Result from {uni_login_response.url}: {uni_login_response.text}")
-
-        user_data = {
-            "username": self._username,
-            "password": self._password,
-            "selected-aktoer": "KONTAKT",
-        }
-        redirects = 0
-        success = False
-        url = ""
-        # navigate through forms and fill out username, password and other data. This is required as first page is only username, second is password etc.
-        while success == False and redirects < 10:
-            html = BeautifulSoup(uni_login_response.text, features="lxml")
-            form = html.form
-            if form is None:
-                url = None
-                _LOGGER.info(f"method={url} response: {uni_login_response}")
-                _LOGGER.error("Login form not found in the HTML response.")
-                alert = html.find(class_="alert-text")
-                if alert is not None:
-                    raise ConnectionAbortedError(alert.get_text())
-                else:
-                    raise ParseError("Login details form not found in the HTML response.")
-
-            errormsg = form.find(class_="form-error-message")
-            if errormsg:
-                errortext = errormsg.get_text()
-                _LOGGER.error(errortext)
-                if re.search(r'(?=.*(?:brugernavn|user))(?=.*(?:fundet|ugyldig|found|invalid)).+', errortext, re.IGNORECASE):
-                    raise AulaCredentialError("Username is invalid")
-                if re.search(r'(?=.*(?:kode|password))(?=.*(?:forkert|ugyldig|wrong|invalid)).+', errortext, re.IGNORECASE):
-                    raise AulaCredentialError("Password is invalid")
-
-            url = form["action"]
-
-            if isinstance(url, str):
-                post_data:Dict[str,str] = {}
-                for input in html.find_all("input"):
-                    if input.has_attr("name") and input.has_attr("value"):
-                        post_data[input["name"]] = input["value"]
-                        for key in user_data:
-                            if input.has_attr("name") and input["name"] == key:
-                                # _LOGGER.debug(f"Login progress - setting {key} = {user_data[key]}")
-                                post_data[key] = user_data[key]
-
-                uni_login_response = self._session.post(url, data=post_data, verify=True)
-                # _LOGGER.debug(f"login process: request sent={uni_login_response.request}")
-                if uni_login_response.url == "https://www.aula.dk:443/portal/":
-                    _LOGGER.debug(f"Login success - redirected to portal. redirects: {redirects}")
-                    success = True
-            redirects += 1
 
         # Find the API url in case of a version change
         original_profiles = profiles = [] if self._login_result is None else self._login_result.profiles
@@ -375,11 +279,13 @@ class AulaProxyClient:
         _LOGGER.debug(f"Fetching calendar events for {len(profiles)} profiles from {start_datetime} to {end_datetime}")
         if len(profiles) == 0: return []
         inst_profile_ids = list(set(profile.id for profile in profiles))
-        csrf_token = self._get_csrf_token()
         start = start_datetime.strftime("%Y-%m-%d 00:00:00.0000%:z")
         end = end_datetime.strftime("%Y-%m-%d 00:00:00.0000%:z")
 
-        headers: Dict[str, str] = {"csrfp-token": csrf_token, "content-type": "application/json"}
+        headers: Dict[str, str] = {"content-type": "application/json"}
+        csrf_token = self._get_csrf_token()
+        if csrf_token:
+            headers["csrfp-token"] = csrf_token
 
         post_data:Dict[str, Any]|None = dict()
         post_data["instProfileIds"] = inst_profile_ids
@@ -671,7 +577,9 @@ class AulaProxyClient:
                             if response.status_code == HTTPStatus.UNAUTHORIZED:
                                 token = self._refresh_token(widgetid)
                             _LOGGER.error(f"Failed to retrieve EasyIQ weekplan for child {child.first_name}. Error: {response.status_code}/{response.reason} - {response.text}.")
-                            if not first_run: continue
+                            if first_run:
+                                self._raise_error(response)
+                            continue
                         continue
                     responsedata: AulaGetEasyiqWeekplanResponse = response.json()
                     plan = AulaEasyiqWeekplanParser.parse_events_as_weekly_plan(responsedata, child.first_name, str(child.user_id), from_date)
@@ -714,10 +622,12 @@ class AulaProxyClient:
                 if response is not None:
                     if response.status_code == HTTPStatus.UNAUTHORIZED:
                         token = self._refresh_token(widgetid)
+                        headers = self._get_myeducation_header(token)
                     _LOGGER.error(f"Failed to retrieve newsletters from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}.")
-                    if not first_run: continue
-                    self._raise_error(response)
-                return []
+                    if first_run:
+                        self._raise_error(response)
+                    continue
+                continue
             responsedata: AulaGetWeeklyNewsletterResponse = response.json()
             newsletters.extend(AulaNewsletterParser.parse_response(responsedata, from_date))
             from_datetime += timedelta(weeks=1)
@@ -878,17 +788,18 @@ class AulaProxyClient:
 
         return result
 
-    def _get_easyiq_header(self, token: AulaToken|None, institution_profile_code: str, csrf_token: str) -> Dict[str,str]:
+    def _get_easyiq_header(self, token: AulaToken|None, institution_profile_code: str, csrf_token: str | None) -> Dict[str,str]:
         result: Dict[str, str] = {
             "user-agent": self._get_user_agent(),
             "x-aula-institutionfilter": institution_profile_code,
             "x-aula-userprofile": "guardian",
             "accept": "application/json",
-            "csrfp-token": csrf_token,
             "origin": "https://www.aula.dk",
             "referer": "https://www.aula.dk/",
             "authority": "api.easyiqcloud.dk",
             }
+        if csrf_token:
+            result["csrfp-token"] = csrf_token
 
         if token:
             result["authorization"] = token.bearer_token

@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timedelta, date, time
+from hashlib import sha256
 from typing import List
 
 from ..responses.get_easyiq_weekplan_response import AulaEasyiqWeekplanEvent, AulaGetEasyiqWeekplanResponse
@@ -11,6 +12,11 @@ EASYIQ_DATETIME_FORMAT = "%Y/%m/%d %H:%M"
 
 
 class AulaEasyiqWeekplanParser(AulaParser):
+    @staticmethod
+    def _stable_id(*parts: str) -> str:
+        raw = "|".join(p or "" for p in parts)
+        return sha256(raw.encode()).hexdigest()[:16]
+
     @staticmethod
     def parse_event(data: AulaEasyiqWeekplanEvent, child_user_id: str) -> AulaEasyiqEvent | None:
         start_str = data.get("start", "")
@@ -27,7 +33,7 @@ class AulaEasyiqWeekplanParser(AulaParser):
         else:
             title = AulaEasyiqWeekplanParser._parse_str(data.get("ownername"))
 
-        task_id = hash(child_user_id + start_str + end_str + title)
+        task_id = AulaEasyiqWeekplanParser._stable_id(child_user_id, start_str, end_str, title)
 
         return AulaEasyiqEvent(
             id=task_id,
@@ -35,8 +41,8 @@ class AulaEasyiqWeekplanParser(AulaParser):
             description=AulaEasyiqWeekplanParser._parse_str(data.get("description")),
             owner_name=AulaEasyiqWeekplanParser._parse_str(data.get("ownername")),
             item_type=item_type,
-            start_time=start_dt.time(),
-            end_time=end_dt.time(),
+            start=start_dt,
+            end=end_dt,
         )
 
     @staticmethod
@@ -53,12 +59,7 @@ class AulaEasyiqWeekplanParser(AulaParser):
             for event_data in events:
                 event = AulaEasyiqWeekplanParser.parse_event(event_data, child_user_id)
                 if event:
-                    start_str = event_data.get("start", "")
-                    try:
-                        event_date = datetime.strptime(start_str, EASYIQ_DATETIME_FORMAT).date()
-                    except (ValueError, TypeError):
-                        continue
-                    events_by_date[event_date].append(event)
+                    events_by_date[event.start.date()].append(event)
 
         daily_plans: List[AulaEasyiqDailyPlan] = []
         for plan_date in sorted(events_by_date.keys()):

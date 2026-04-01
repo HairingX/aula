@@ -33,16 +33,16 @@ class TestEasyiqWeekplan(unittest.TestCase):
         self.assertEqual(event1.title, "Matematik")
         self.assertEqual(event1.owner_name, "Lars Jensen")
         self.assertEqual(event1.description, "Vi arbejder med brøker og decimaltal")
-        self.assertEqual(event1.start_time, time(8, 0))
-        self.assertEqual(event1.end_time, time(10, 0))
+        self.assertEqual(event1.start.time(), time(8, 0))
+        self.assertEqual(event1.end.time(), time(10, 0))
         self.assertEqual(event1.item_type, "5")
 
         # Second event: itemType "3" uses ownername as title
         event2 = monday.events[1]
         self.assertEqual(event2.title, "Mette Hansen")
         self.assertEqual(event2.owner_name, "Mette Hansen")
-        self.assertEqual(event2.start_time, time(10, 15))
-        self.assertEqual(event2.end_time, time(12, 0))
+        self.assertEqual(event2.start.time(), time(10, 15))
+        self.assertEqual(event2.end.time(), time(12, 0))
 
         # Tuesday has 1 event
         tuesday = plan.daily_plans[1]

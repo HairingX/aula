@@ -21,6 +21,12 @@ from .aula_proxy.aula_errors import AulaCredentialError
 
 _LOGGER = logging.getLogger(__name__)
 
+# Coordinator polling interval
+DATA_COORDINATOR_POLL_INTERVAL = timedelta(minutes=5)
+
+# Number of consecutive fetch failures before raising UpdateFailed
+MAX_CONSECUTIVE_FAILURES = 3
+
 @dataclass
 class AulaDataCoordinatorData:
     device_id: str
@@ -45,13 +51,14 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
             name="general",
             config_entry=config_entry,
             # Polling interval. Will only be polled if there are subscribers.
-            update_interval=timedelta(minutes=5),
+            update_interval=DATA_COORDINATOR_POLL_INTERVAL,
             # Set always_update to `False` if the data returned from the
             # api can be compared via `__eq__` to avoid duplicate updates
             # being dispatched to listeners
             always_update=True,
         )
         self._client = client
+        self._consecutive_failures = 0
         self.device_id = device_id
         self.aula_version = client.aula_version
 
@@ -121,24 +128,54 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
         self._client.connection_check()
 
     def _fetch_data(self) -> AulaDataCoordinatorData|Exception:
+        # Login is required for all fetches — if this fails, nothing works
         try:
             logindata = self._client.login()
             profiles = logindata.profiles
             self.aula_version = logindata.api_version
-            daily_overviews = self._client.get_daily_overviews(profiles)
-            message_threads = self._client.get_message_threads()
-            notifications = self._client.get_notifications([child for profile in profiles for child in profile.children])
-            data = AulaDataCoordinatorData(
-                aula_version = self.aula_version,
-                children = [child for profile in profiles for child in profile.children],
-                daily_overviews = daily_overviews,
-                device_id = self.device_id,
-                message_threads = message_threads,
-                notifications = notifications,
-                profiles = profiles,
-            )
         except Exception as ex:
-            _LOGGER.error(ex)
+            _LOGGER.error(f"Login failed: {ex}")
             return ex
-        # _LOGGER.debug(f"Coordinator fetched data: {data)")
-        return data
+
+        children = [child for profile in profiles for child in profile.children]
+        had_failure = False
+
+        daily_overviews = list[AulaDailyOverview]()
+        try:
+            daily_overviews = self._client.get_daily_overviews(profiles)
+        except Exception as ex:
+            had_failure = True
+            _LOGGER.warning(f"Failed to fetch daily overviews: {ex}")
+
+        message_threads = list[AulaMessageThread]()
+        try:
+            message_threads = self._client.get_message_threads()
+        except Exception as ex:
+            had_failure = True
+            _LOGGER.warning(f"Failed to fetch message threads: {ex}")
+
+        notifications = list[AULA_NOTIFICATION_TYPES]()
+        try:
+            notifications = self._client.get_notifications(children)
+        except Exception as ex:
+            had_failure = True
+            _LOGGER.warning(f"Failed to fetch notifications: {ex}")
+
+        if had_failure:
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                self._consecutive_failures = 0
+                return Exception(f"Aula API failed {MAX_CONSECUTIVE_FAILURES} consecutive times")
+            _LOGGER.debug(f"Fetch had partial failures ({self._consecutive_failures}/{MAX_CONSECUTIVE_FAILURES} before unavailable)")
+        else:
+            self._consecutive_failures = 0
+
+        return AulaDataCoordinatorData(
+            aula_version=self.aula_version,
+            children=children,
+            daily_overviews=daily_overviews,
+            device_id=self.device_id,
+            message_threads=message_threads,
+            notifications=notifications,
+            profiles=profiles,
+        )

@@ -1,27 +1,27 @@
 from dataclasses import dataclass
 import datetime
-from typing import List, Optional
+from typing import List
 
 
 @dataclass
 class AulaEasyiqEvent:
     """An event from the EasyIQ weekly plan API.
 
-    id: Generated unique ID (hash of child + start + end + title)
+    id: Generated stable unique ID (sha256 of child + start + end + title)
     title: Event title (from title field if itemType=="5", else from ownername)
     description: Event description/content
     owner_name: Teacher/owner name
     item_type: EasyIQ item type string (e.g. "5")
-    start_time: Event start time
-    end_time: Event end time
+    start: Event start datetime
+    end: Event end datetime
     """
-    id: int
+    id: str
     title: str
     description: str
     owner_name: str
     item_type: str
-    start_time: datetime.time
-    end_time: datetime.time
+    start: datetime.datetime
+    end: datetime.datetime
 
 
 @dataclass

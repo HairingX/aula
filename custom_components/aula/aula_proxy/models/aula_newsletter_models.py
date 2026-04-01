@@ -11,7 +11,7 @@ class AulaNewsletter:
     content_html: Raw HTML content from the API (preserved for custom card rendering)
     institution_name: Name of the institution that published the newsletter
     """
-    id: int
+    id: str
     content_html: str
     institution_name: str
 
