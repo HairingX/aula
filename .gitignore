@@ -18,5 +18,6 @@ skoleskema.json
 secrets.yml
 test_messages/
 .claude/settings.local.json
+config/.cache/
 config/.ha_run.lock
 docs/temp/
