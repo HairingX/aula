@@ -515,11 +515,6 @@ class AulaNewsletterCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ig
         await self.coordinator.async_add_newsletter_key(self._profile)
         return await super().async_added_to_hass()
 
-    def _handle_data_updated(self, data: AulaCalendarCoordinatorData) -> bool:
-        if self._profile.id in data.updated_newsletters_for_listener_keys:
-            return True
-        return False
-
     @property
     def event(self) -> CalendarEvent | None:
         current_time = now()
@@ -539,6 +534,11 @@ class AulaNewsletterCalendar(AulaCalendarEntityBase, CalendarEntity): # type: ig
                 if _is_event_in_range(event, start_date, end_date):
                     events.append(event)
         return events
+
+    def _handle_data_updated(self, data: AulaCalendarCoordinatorData) -> bool:
+        if self._profile.id in data.updated_newsletters_for_listener_keys:
+            return True
+        return False
 
     def _create_calendar_event(self, weekly: AulaWeeklyNewsletter, newsletter: AulaNewsletter) -> CalendarEvent:
         summary = f"Newsletter - {weekly.child_name}"
