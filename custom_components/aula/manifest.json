@@ -14,7 +14,9 @@
     "issue_tracker": "https://github.com/hairingx/aula/issues",
     "requirements": [
         "beautifulsoup4",
-        "lxml"
+        "lxml",
+        "pycryptodomex",
+        "qrcode"
     ],
-    "version": "0.1.9"
+    "version": "0.2.0"
 }

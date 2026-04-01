@@ -117,7 +117,10 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         If the refresh fails, async_config_entry_first_refresh will
         raise ConfigEntryNotReady and setup will try again later
         """
-        await self.hass.async_add_executor_job(self._connection_check)
+        try:
+            await self.hass.async_add_executor_job(self._connection_check)
+        except AulaCredentialError as err:
+            raise ConfigEntryAuthFailed from err
 
     async def _async_update_data(self) -> AulaCalendarCoordinatorData:
         """Fetch data from API endpoint.

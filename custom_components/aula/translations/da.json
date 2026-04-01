@@ -1,35 +1,67 @@
 {
   "config": {
     "abort": {
+      "auth_failed": "MitID-godkendelse mislykkedes. Prøv venligst igen.",
       "missing_entry_data": "Enhedsdata kunne ikke findes.",
+      "reauth_successful": "Genautentificering lykkedes.",
+      "reconfigure_successful": "Genkonfiguration lykkedes.",
       "success": "Succes."
     },
     "error": {
+      "auth_failed": "MitID-godkendelse mislykkedes. Prøv venligst igen.",
       "id_already_in_use": "ID er allerede i brug. Brug venligst et andet ID.",
-      "invalid_auth": "Login mislykkedes. Tjek venligst dit brugernavn og adgangskode og prøv igen.",
-      "invalid_email": "Ugyldig email.",
+      "invalid_auth": "Login mislykkedes. Tjek venligst dine oplysninger og prøv igen.",
       "invalid_id": "Ugyldigt ID.",
-      "invalid_password": "Ugyldig adgangskode.",
       "invalid_response": "Ugyldigt svar fra API, prøv venligst igen senere."
     },
     "step": {
-      "conf": {
+      "user": {
         "data": {
           "id": "Enheds ID",
-          "password": "Unilogin password",
-          "schoolschedule": "Tilføj skoleskemaer som kalender entiteter?",
-          "username": "Unilogin brugernavn"
+          "mitid_username": "MitID Brugernavn",
+          "mitid_use_token": "Brug MitID hardware-token i stedet for app"
         },
-        "description": "Indtast dine Unilogin oplysninger",
-        "title": "Aula"
+        "description": "Konfigurer din Aula-integration med MitID. Du skal godkende login i din MitID-app.",
+        "title": "Aula MitID Login"
       },
-      "reconf": {
+      "token_credentials": {
+        "title": "MitID Token-enhed",
+        "description": "Indtast dine MitID token-enhed oplysninger.",
         "data": {
-          "password": "Unilogin password",
-          "username": "Unilogin brugernavn"
-        },
-        "description": "Opdater dine Unilogin oplysninger",
-        "title": "Aula"
+          "mitid_password": "MitID Adgangskode",
+          "mitid_token": "Token-kode (6 cifre)"
+        }
+      },
+      "authenticate": {
+        "title": "Godkender med MitID",
+        "description": "Vent venligst mens vi godkender med MitID..."
+      },
+      "complete": {
+        "title": "Godkendelse fuldført",
+        "description": "MitID-godkendelse lykkedes! Opsætter din Aula-integration..."
+      },
+      "auth_error": {
+        "title": "Godkendelse mislykkedes",
+        "description": "MitID-godkendelse mislykkedes. Klik Indsend for at prøve igen."
+      },
+      "reauth_username": {
+        "title": "MitID Brugernavn Påkrævet",
+        "description": "Din Aula-integration opgraderes til MitID-godkendelse. Indtast venligst dit MitID-brugernavn for at fortsætte.",
+        "data": {
+          "mitid_username": "MitID Brugernavn"
+        }
+      },
+      "reconfigure": {
+        "title": "Genkonfigurer Aula",
+        "description": "Opdater dine MitID-oplysninger. Du skal godkende login i din MitID-app.",
+        "data": {
+          "mitid_username": "MitID Brugernavn",
+          "mitid_use_token": "Brug MitID hardware-token i stedet for app"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Genautentificer Aula",
+        "description": "Din Aula-session skal genautentificeres. Brugernavn: {username}\n\nKlik Indsend for at fortsætte med MitID-godkendelse."
       },
       "options": {
         "data": {
@@ -275,12 +307,12 @@
       "1": "Unknown error"
     },
     "step": {
-      "conf": {
+      "user": {
         "data": {
-          "password": "Unilogin password",
-          "username": "Unilogin brugernavn"
+          "mitid_username": "MitID Brugernavn",
+          "auth_method": "Godkendelsesmetode"
         },
-        "description": "Indtast dine Unilogin oplysninger",
+        "description": "Indtast dine MitID-oplysninger.",
         "title": "Login"
       },
       "options": {

@@ -17,8 +17,9 @@ class AulaEntityBase(Generic[CONTEXT_TYPE], CoordinatorEntity[AulaDataCoordinato
 
     def __init__(self, coordinator: AulaDataCoordinator, name: str, context: CONTEXT_TYPE) -> None:
         super().__init__(coordinator, context)
+        assert coordinator.config_entry is not None
         self._attr_translation_key = name
-        self._attr_unique_id = self._attr_translation_key
+        self._attr_unique_id = f"{coordinator.config_entry.unique_id}_{self._attr_translation_key}"
         #set initial values
 
     @callback
@@ -50,8 +51,9 @@ class AulaCalendarEntityBase(CoordinatorEntity[AulaCalendarCoordinator]):
 
     def __init__(self, coordinator: AulaCalendarCoordinator, name: str) -> None:
         super().__init__(coordinator, context=None)
+        assert coordinator.config_entry is not None
         self._attr_translation_key = name
-        self._attr_unique_id = self._attr_translation_key
+        self._attr_unique_id = f"{coordinator.config_entry.unique_id}_{self._attr_translation_key}"
 
     @callback
     def _handle_coordinator_update(self) -> None:

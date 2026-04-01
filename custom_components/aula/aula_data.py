@@ -14,8 +14,6 @@ class AulaHassData(TypedDict):
     client: AulaClient
     data_coordinator: AulaDataCoordinator
     calendar_coordinator: AulaCalendarCoordinator
-    username: str
-    password: str
 
 def get_hass_data(hass: HomeAssistant, entry: ConfigEntry) -> AulaHassData:
     return hass.data[DOMAIN][entry.entry_id]

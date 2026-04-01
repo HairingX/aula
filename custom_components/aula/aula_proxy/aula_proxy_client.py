@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List
 from datetime import datetime, timedelta, date
 import json
 import logging
+import re
 import pytz
 from .aula_errors import ParseError, AulaCredentialError
 from .models.constants import AulaWidgetId
@@ -38,6 +39,12 @@ REQUEST_MAX_ATTEMPTS = 3
 REQUEST_TIMEOUT = 30
 """Default timeout in seconds for all HTTP requests."""
 TOKEN_EXPIRATION_TIME = timedelta(minutes=40)
+
+_ACCESS_TOKEN_PATTERN = re.compile(r'access_token=[^&\s]*')
+
+def _redact_url(url: Any) -> str:
+    """Strip access_token from a URL for safe logging."""
+    return _ACCESS_TOKEN_PATTERN.sub('access_token=REDACTED', str(url))
 
 class _TimeoutSession(Session):
     """A requests.Session that applies a default timeout to all requests."""
@@ -80,6 +87,10 @@ class AulaProxyClient:
     def update_token(self, new_token: str) -> None:
         """Update the access token used for API calls."""
         self._session.set_access_token(new_token)
+
+    def close(self) -> None:
+        """Close the HTTP session."""
+        self._session.close()
 
 
     def _get_csrf_token(self) -> str | None:
@@ -260,7 +271,7 @@ class AulaProxyClient:
                 break
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
-                _LOGGER.error(f"Failed to retrieve birthday events for profile codes: {inst_profile_codes}. Error: {response.status_code}/{response.reason} - {response.text}. Request url: {response.request.url}, Request headers: {response.request.headers}, Request body: {response.request.body}.")
+                _LOGGER.error(f"Failed to retrieve birthday events for profile codes: {inst_profile_codes}. Error: {response.status_code}/{response.reason} - {response.text}. Request url: {_redact_url(response.request.url)}, Request headers: {response.request.headers}, Request body: {response.request.body}.")
                 self._raise_error(response)
             return []
         responsedata: AulaGetBirthdayEventsForInstitutionsResponse = response.json()
@@ -308,7 +319,7 @@ class AulaProxyClient:
                 break
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
-                _LOGGER.error(f"Failed to retrieve calendar events for profileids: {inst_profile_ids}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
+                _LOGGER.error(f"Failed to retrieve calendar events for profileids: {inst_profile_ids}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
                 self._raise_error(response)
             return []
         responsedata: AulaGetEventsByProfileIdsAndResourceIdsResponse = response.json()
@@ -344,7 +355,7 @@ class AulaProxyClient:
                 break
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
-                _LOGGER.error(f"Failed to retrieve daily overview for childids: {child_ids_as_str_list}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
+                _LOGGER.error(f"Failed to retrieve daily overview for childids: {child_ids_as_str_list}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
                 self._raise_error(response)
             return []
         responsedata: AulaGetDailyOverviewResponse = response.json()
@@ -382,7 +393,7 @@ class AulaProxyClient:
                 break
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
-                _LOGGER.error(f"Failed to retrieve message threads. Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
+                _LOGGER.error(f"Failed to retrieve message threads. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
                 self._raise_error(response)
             return []
         responsedata: AulaGetMessageThreadsResponse = response.json()
@@ -424,7 +435,7 @@ class AulaProxyClient:
                 break
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
-                _LOGGER.error(f"Failed to retrieve messages from thread: {thread.subject} (id {thread.id}). Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
+                _LOGGER.error(f"Failed to retrieve messages from thread: {thread.subject} (id {thread.id}). Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
                 self._raise_error(response)
             return []
         responsedata: AulaGetMessagesForThreadResponse = response.json()
@@ -462,7 +473,7 @@ class AulaProxyClient:
                 break
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
-                _LOGGER.error(f"Failed to retrieve notifications from children: {child_userids_as_str_list}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
+                _LOGGER.error(f"Failed to retrieve notifications from children: {child_userids_as_str_list}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
                 self._raise_error(response)
             return []
         responsedata: AulaGetNotificationsResponse = response.json()
@@ -511,7 +522,8 @@ class AulaProxyClient:
                 if response is not None:
                     if response.status_code == HTTPStatus.UNAUTHORIZED:
                         token = self._refresh_token(widgetid)
-                    _LOGGER.error(f"Failed to retrieve weekly plans from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {response.request}.")
+                        headers = self._get_meebook_header(token)
+                    _LOGGER.error(f"Failed to retrieve weekly plans from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
                     if not first_run: continue
                     self._raise_error(response)
                 return []
