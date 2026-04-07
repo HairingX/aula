@@ -507,6 +507,7 @@ class AulaProxyClient:
         from_datetime = from_datetime - timedelta(days=from_datetime.weekday()) #ensure it is a monday
         from_date = from_datetime.date()
         first_run = True
+        has_force_refreshed = False  # only one force-refresh per call to avoid spamming the token endpoint
         while from_datetime < to_datetime:
             from_date = from_datetime.date()
             weekno = self._get_aula_week_formatted(from_date)
@@ -518,11 +519,17 @@ class AulaProxyClient:
                     continue
                 if not self._should_retry_request(response, attempt):
                     break
+            # On 401, force-refresh token once and retry this request
+            if response is not None and response.status_code == HTTPStatus.UNAUTHORIZED and not has_force_refreshed:
+                token = self._refresh_token(widgetid, force=True)
+                headers = self._get_meebook_header(token)
+                has_force_refreshed = True
+                try:
+                    response = self._session.get(requesturl.format(weekno=weekno), headers=headers, verify=True)
+                except (RequestsTimeout, RequestsConnectionError):
+                    response = None
             if response == None or response.status_code != HTTPStatus.OK:
                 if response is not None:
-                    if response.status_code == HTTPStatus.UNAUTHORIZED:
-                        token = self._refresh_token(widgetid)
-                        headers = self._get_meebook_header(token)
                     _LOGGER.error(f"Failed to retrieve weekly plans from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
                     if not first_run: continue
                     self._raise_error(response)
@@ -562,6 +569,7 @@ class AulaProxyClient:
         weeklyplans = list[AulaEasyiqWeeklyPlan]()
         from_datetime = from_datetime - timedelta(days=from_datetime.weekday())
         first_run = True
+        has_force_refreshed = False  # only one force-refresh per call to avoid spamming the token endpoint
         while from_datetime < to_datetime:
             from_date = from_datetime.date()
             weekno = self._get_aula_week_formatted(from_date)
@@ -584,10 +592,17 @@ class AulaProxyClient:
                             continue
                         if not self._should_retry_request(response, attempt):
                             break
+                    # On 401, force-refresh token once and retry this request
+                    if response is not None and response.status_code == HTTPStatus.UNAUTHORIZED and not has_force_refreshed:
+                        token = self._refresh_token(widgetid, force=True)
+                        has_force_refreshed = True
+                        headers = self._get_easyiq_header(token, inst_code, csrf_token)
+                        try:
+                            response = self._session.post(EASYIQ_API + "/weekplaninfo", json=post_data, headers=headers, verify=True)
+                        except (RequestsTimeout, RequestsConnectionError):
+                            response = None
                     if response == None or response.status_code != HTTPStatus.OK:
                         if response is not None:
-                            if response.status_code == HTTPStatus.UNAUTHORIZED:
-                                token = self._refresh_token(widgetid)
                             _LOGGER.error(f"Failed to retrieve EasyIQ weekplan for child {child.first_name}. Error: {response.status_code}/{response.reason} - {response.text}.")
                             if first_run:
                                 self._raise_error(response)
@@ -618,6 +633,7 @@ class AulaProxyClient:
         newsletters = list[AulaWeeklyNewsletter]()
         from_datetime = from_datetime - timedelta(days=from_datetime.weekday())
         first_run = True
+        has_force_refreshed = False  # only one force-refresh per call to avoid spamming the token endpoint
         while from_datetime < to_datetime:
             from_date = from_datetime.date()
             weekno = self._get_aula_week_formatted(from_date)
@@ -630,11 +646,17 @@ class AulaProxyClient:
                     continue
                 if not self._should_retry_request(response, attempt):
                     break
+            # On 401, force-refresh token once and retry this request
+            if response is not None and response.status_code == HTTPStatus.UNAUTHORIZED and not has_force_refreshed:
+                token = self._refresh_token(widgetid, force=True)
+                headers = self._get_myeducation_header(token)
+                has_force_refreshed = True
+                try:
+                    response = self._session.get(requesturl.format(weekno=weekno), headers=headers, verify=True)
+                except (RequestsTimeout, RequestsConnectionError):
+                    response = None
             if response == None or response.status_code != HTTPStatus.OK:
                 if response is not None:
-                    if response.status_code == HTTPStatus.UNAUTHORIZED:
-                        token = self._refresh_token(widgetid)
-                        headers = self._get_myeducation_header(token)
                     _LOGGER.error(f"Failed to retrieve newsletters from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}.")
                     if first_run:
                         self._raise_error(response)
@@ -713,24 +735,31 @@ class AulaProxyClient:
     #     _LOGGER.debug(f"Fetched reminders: {len(result)}")
     #     return result
 
-    def _refresh_token(self, widgetid:AulaWidgetId) -> AulaToken:
+    def _refresh_token(self, widgetid:AulaWidgetId, force: bool = False) -> AulaToken | None:
         token = self._tokens.get(widgetid)
         current_time = datetime.now(pytz.utc)
-        if token is not None and current_time - token.timestamp < timedelta(minutes=5):
+        if not force and token is not None and current_time - token.timestamp < timedelta(minutes=5):
             _LOGGER.debug("Ignoring token refresh request to avoid refreshing too often for widget id: " + widgetid)
             return token
 
-        responsedata = self._session.get(f"{self._apiurl}?method=aulaToken.getAulaToken&widgetId={widgetid}", verify=True).json()
-        data = responsedata["data"]
-        token = AulaToken(
-            # "token": str(responsedata),
-            bearer_token = "Bearer " + str(data),
-            timestamp = datetime.now(pytz.utc)
-        )
-        self._tokens[widgetid] = token
-        return token
+        try:
+            response = self._session.get(f"{self._apiurl}?method=aulaToken.getAulaToken&widgetId={widgetid}", verify=True)
+            if response.status_code != HTTPStatus.OK:
+                _LOGGER.warning("Failed to refresh token for widget %s: HTTP %s", widgetid, response.status_code)
+                return token
+            responsedata = response.json()
+            data = responsedata["data"]
+            token = AulaToken(
+                bearer_token = "Bearer " + str(data),
+                timestamp = datetime.now(pytz.utc)
+            )
+            self._tokens[widgetid] = token
+            return token
+        except (RequestsTimeout, RequestsConnectionError, json.JSONDecodeError, KeyError) as e:
+            _LOGGER.warning("Failed to refresh widget token for %s: %s", widgetid, e)
+            return token
 
-    def _get_token(self, widgetid:AulaWidgetId) -> AulaToken:
+    def _get_token(self, widgetid:AulaWidgetId) -> AulaToken | None:
         _LOGGER.debug(f"Requesting new token for widget {widgetid}")
         if widgetid in self._tokens:
             token = self._tokens[widgetid]
@@ -889,14 +918,12 @@ class AulaProxyClient:
     def _should_retry_request(response: Response, attempt: int) -> bool:
         if response.status_code == HTTPStatus.OK:
             return False
-        if response.status_code == HTTPStatus.UNAUTHORIZED:
-            if not AulaProxyClient._is_last_attempt(attempt):
-                _LOGGER.debug(f"Failed to retrieve calendar due to authorization errors, will retry (attempt {attempt}/{REQUEST_MAX_ATTEMPTS}): {response}")
-                return True
+        # Only retry on server errors (5xx) — retrying 401 with the same token is pointless,
+        # widget methods handle 401 with force-refresh-and-retry instead.
         status = HTTPStatus(response.status_code)
         if status.is_server_error:
             if not AulaProxyClient._is_last_attempt(attempt):
-                _LOGGER.debug(f"Failed to retrieve calendar due to server errors, will retry (attempt {attempt}/{REQUEST_MAX_ATTEMPTS}): {response}")
+                _LOGGER.debug(f"Request failed due to server error, will retry (attempt {attempt}/{REQUEST_MAX_ATTEMPTS}): {response}")
                 return True
         return False
 
@@ -904,11 +931,20 @@ class AulaProxyClient:
     def _raise_error(response: Response | None) -> None:
         if response is None: return
         if response.ok: return
-        responsedata = response.json()
-        if response.status_code == HTTPStatus.UNAUTHORIZED: raise PermissionError(responsedata["status"]["message"])
-        if response.status_code == HTTPStatus.PAYMENT_REQUIRED: raise PermissionError(responsedata["status"]["message"])
-        if response.status_code == HTTPStatus.FORBIDDEN: raise PermissionError(responsedata["status"]["message"])
-        if response.status_code != HTTPStatus.OK: raise ImportError(responsedata["status"]["message"])
-        if HTTPStatus(response.status_code).is_client_error:
-            raise ConnectionRefusedError(response)
-        response.raise_for_status()
+        # Safe message extraction — Aula API uses {"status": {"message": ...}}
+        # but widget APIs may return plain text or different JSON structures
+        message: str = f"{response.status_code} {response.reason or ''}"
+        try:
+            responsedata: dict[str, Any] = response.json()
+            status: dict[str, Any] | None = responsedata.get("status")
+            if isinstance(status, dict):
+                msg: Any = status.get("message")
+                if msg is not None:
+                    message = str(msg)
+        except (json.JSONDecodeError, ValueError, AttributeError):
+            pass
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            raise AulaCredentialError(message)
+        if response.status_code == HTTPStatus.PAYMENT_REQUIRED: raise PermissionError(message)
+        if response.status_code == HTTPStatus.FORBIDDEN: raise PermissionError(message)
+        raise ImportError(message)

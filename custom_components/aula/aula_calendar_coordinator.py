@@ -169,6 +169,8 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         try:
             new_birthdaymap, new_birtyday_keys = self._fetch_birthdays(birthdaylisteners)
             self._birthdaymap = new_birthdaymap
+        except AulaCredentialError:
+            raise
         except Exception as ex:
             had_failure = True
             _LOGGER.warning(f"Failed to fetch birthdays, using cached data: {ex}")
@@ -177,6 +179,8 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         try:
             new_eventmap, new_event_keys = self._fetch_events(eventlisteners)
             self._eventmap = new_eventmap
+        except AulaCredentialError:
+            raise
         except Exception as ex:
             had_failure = True
             _LOGGER.warning(f"Failed to fetch events, using cached data: {ex}")
@@ -185,6 +189,8 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         try:
             new_weeklyplanmap, new_weeklyplan_keys = self._fetch_weekly_plans(weekplanlisteners)
             self._weeklyplanmap = new_weeklyplanmap
+        except AulaCredentialError:
+            raise
         except Exception as ex:
             had_failure = True
             _LOGGER.warning(f"Failed to fetch weekly plans, using cached data: {ex}")
@@ -193,6 +199,8 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         try:
             new_easyiqweekplanmap, new_easyiq_keys = self._fetch_easyiq_weekly_plans(easyiqweekplanlisteners)
             self._easyiqweekplanmap = new_easyiqweekplanmap
+        except AulaCredentialError:
+            raise
         except Exception as ex:
             had_failure = True
             _LOGGER.warning(f"Failed to fetch EasyIQ weekplans, using cached data: {ex}")
@@ -201,6 +209,8 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         try:
             new_newslettermap, new_newsletter_keys = self._fetch_newsletters(newsletterlisteners)
             self._newslettermap = new_newslettermap
+        except AulaCredentialError:
+            raise
         except Exception as ex:
             had_failure = True
             _LOGGER.warning(f"Failed to fetch newsletters, using cached data: {ex}")

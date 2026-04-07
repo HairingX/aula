@@ -146,6 +146,8 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
         daily_overviews = list[AulaDailyOverview]()
         try:
             daily_overviews = self._client.get_daily_overviews(profiles)
+        except AulaCredentialError:
+            raise
         except Exception as ex:
             had_failure = True
             _LOGGER.warning(f"Failed to fetch daily overviews: {ex}")
@@ -153,6 +155,8 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
         message_threads = list[AulaMessageThread]()
         try:
             message_threads = self._client.get_message_threads()
+        except AulaCredentialError:
+            raise
         except Exception as ex:
             had_failure = True
             _LOGGER.warning(f"Failed to fetch message threads: {ex}")
@@ -160,6 +164,8 @@ class AulaDataCoordinator(DataUpdateCoordinator[AulaDataCoordinatorData]):
         notifications = list[AULA_NOTIFICATION_TYPES]()
         try:
             notifications = self._client.get_notifications(children)
+        except AulaCredentialError:
+            raise
         except Exception as ex:
             had_failure = True
             _LOGGER.warning(f"Failed to fetch notifications: {ex}")
