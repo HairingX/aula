@@ -534,7 +534,13 @@ class AulaProxyClient:
                     if not first_run: continue
                     self._raise_error(response)
                 return []
-            responsedata: List[AulaGetWeeklyPlansResponse] = response.json()
+            responsedata = response.json()
+            # Meebook may return a dict (e.g. error/expired token payload) instead of the expected list
+            if not isinstance(responsedata, list):
+                _LOGGER.warning(f"Unexpected Meebook response type ({type(responsedata).__name__}) for week {weekno}, skipping: {responsedata}")
+                from_datetime += timedelta(weeks=1)
+                first_run = False
+                continue
             # assign dates to the weekly plans - we need them later
             for respdata in responsedata:
                 respdata["from_date"] = from_date
