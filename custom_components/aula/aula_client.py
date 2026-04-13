@@ -135,11 +135,13 @@ class AulaClient:
         start_datetime: datetime.datetime,
         end_datetime: datetime.datetime,
     ) -> List[AulaBirthdayEvent]:
+        self._ensure_valid_token()
         return self._proxy.get_birthday_events(profiles, start_datetime, end_datetime)
 
     def get_daily_overviews(
         self, profiles: List[AulaProfile]
     ) -> List[AulaDailyOverview]:
+        self._ensure_valid_token()
         return self._proxy.get_daily_overviews(profiles)
 
     def get_calendar_events(
@@ -148,14 +150,17 @@ class AulaClient:
         start_datetime: datetime.datetime,
         end_datetime: datetime.datetime,
     ) -> List[AulaCalendarEvent]:
+        self._ensure_valid_token()
         return self._proxy.get_calendar_events(profiles, start_datetime, end_datetime)
 
     def get_message_threads(self) -> List[AulaMessageThread]:
+        self._ensure_valid_token()
         return self._proxy.get_message_threads()
 
     def get_notifications(
         self, profiles: List[AulaChildProfile]
     ) -> List[AULA_NOTIFICATION_TYPES]:
+        self._ensure_valid_token()
         return self._proxy.get_notifications(profiles)
 
     def get_weekly_plans(
@@ -164,6 +169,7 @@ class AulaClient:
         start_datetime: datetime.datetime,
         end_datetime: datetime.datetime,
     ) -> List[AulaWeeklyPlan]:
+        self._ensure_valid_token()
         return self._proxy.get_weekly_plans(profiles, start_datetime, end_datetime)
 
     def get_easyiq_weekly_plans(
@@ -172,6 +178,7 @@ class AulaClient:
         start_datetime: datetime.datetime,
         end_datetime: datetime.datetime,
     ) -> List[AulaEasyiqWeeklyPlan]:
+        self._ensure_valid_token()
         return self._proxy.get_easyiq_weekly_plans(
             profiles, start_datetime, end_datetime
         )
@@ -182,4 +189,5 @@ class AulaClient:
         start_datetime: datetime.datetime,
         end_datetime: datetime.datetime,
     ) -> List[AulaWeeklyNewsletter]:
+        self._ensure_valid_token()
         return self._proxy.get_newsletters(profiles, start_datetime, end_datetime)
