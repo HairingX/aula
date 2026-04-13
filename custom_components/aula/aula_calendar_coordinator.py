@@ -158,6 +158,8 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
         try:
             logindata = self._client.login()
             self.aula_version = logindata.api_version
+        except AulaCredentialError:
+            raise
         except Exception as ex:
             _LOGGER.error(f"Login failed: {ex}")
             return ex

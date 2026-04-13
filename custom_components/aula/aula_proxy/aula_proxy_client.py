@@ -531,7 +531,9 @@ class AulaProxyClient:
             if response == None or response.status_code != HTTPStatus.OK:
                 if response is not None:
                     _LOGGER.error(f"Failed to retrieve weekly plans from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
-                    if not first_run: continue
+                    if not first_run:
+                        from_datetime += timedelta(weeks=1)
+                        continue
                     self._raise_error(response)
                 return []
             responsedata = response.json()
@@ -666,7 +668,8 @@ class AulaProxyClient:
                     _LOGGER.error(f"Failed to retrieve newsletters from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}.")
                     if first_run:
                         self._raise_error(response)
-                    continue
+                from_datetime += timedelta(weeks=1)
+                first_run = False
                 continue
             responsedata: AulaGetWeeklyNewsletterResponse = response.json()
             newsletters.extend(AulaNewsletterParser.parse_response(responsedata, from_date))
