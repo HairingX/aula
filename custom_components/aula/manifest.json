@@ -17,5 +17,5 @@
         "pycryptodomex>=3.19.0",
         "qrcode>=7.4.0"
     ],
-    "version": "0.2.2"
+    "version": "0.2.3"
 }
