@@ -7,8 +7,11 @@ from custom_components.aula.aula_proxy.models.aula_profile_parser import AulaPro
 class TestMessages(unittest.TestCase):
     # def setUp(self):
 
+    _fixture_path = Path(__file__).parent / "test_messages" / "profiles.getProfilesByLogin.json"
+
+    @unittest.skipUnless(_fixture_path.exists(), "Fixture contains sensitive data and is not committed")
     def test_getProfilesByLogin(self):
-        fixture_path = Path(__file__).parent / "test_messages" / "profiles.getProfilesByLogin.json"
+        fixture_path = self._fixture_path
         with open(fixture_path, encoding="utf-8") as txt:
             msg = json.load(txt)
             profiles = AulaProfileParser.parse_profiles(msg["data"]["profiles"])

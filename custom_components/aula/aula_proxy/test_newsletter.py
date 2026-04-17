@@ -7,11 +7,17 @@ from custom_components.aula.aula_proxy.models.aula_newsletter_parser import Aula
 
 
 class TestNewsletter(unittest.TestCase):
+    _fixture_dir = os.path.join(os.path.dirname(__file__), "test_messages")
+
     def _load_fixture(self, filename: str):
-        filepath = os.path.join(os.path.dirname(__file__), "test_messages", filename)
+        filepath = os.path.join(self._fixture_dir, filename)
         with open(filepath, "r") as f:
             return json.load(f)
 
+    @unittest.skipUnless(
+        os.path.exists(os.path.join(os.path.dirname(__file__), "test_messages", "newsletter_response.json")),
+        "Fixture contains sensitive data and is not committed",
+    )
     def test_parse_valid_newsletter_response(self):
         raw = self._load_fixture("newsletter_response.json")
         data = raw["module_response"]
