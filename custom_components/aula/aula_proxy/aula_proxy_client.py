@@ -2,13 +2,13 @@ import calendar
 from http import HTTPStatus
 from requests import Response, Session
 from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout as RequestsTimeout
-from typing import Any, Dict, Iterable, List
+from typing import Any, Callable, Dict, Iterable, List
 from datetime import datetime, timedelta, date
 import json
 import logging
 import re
 import pytz
-from .aula_errors import ParseError, AulaCredentialError
+from .aula_errors import ParseError, AulaCredentialError, AulaApiError
 from .models.constants import AulaWidgetId
 from .models.module import *
 from .responses.get_daily_overview_response import AulaGetDailyOverviewResponse
@@ -77,12 +77,17 @@ class AulaProxyClient:
     _apiurl:str = ""
     _username:str = ""
     _session:_TokenSession
+    _token_refresh_callback: Callable[[], bool] | None = None
 
     def __init__(self, access_token: str, username_for_meebook: str = ""):
         self._username = username_for_meebook
         self._session = _TokenSession()
         self._session.set_access_token(access_token)
         self._tokens = dict()
+
+    def set_token_refresh_callback(self, callback: Callable[[], bool]) -> None:
+        """Set a callback that force-refreshes the access token. Returns True on success."""
+        self._token_refresh_callback = callback
 
     def update_token(self, new_token: str) -> None:
         """Update the access token used for API calls."""
@@ -269,6 +274,7 @@ class AulaProxyClient:
                 continue
             if not self._should_retry_request(response, attempt):
                 break
+        response = self._retry_on_401(response, lambda: self._session.get(requesturl, headers=headers, verify=True))
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
                 _LOGGER.error(f"Failed to retrieve birthday events for profile codes: {inst_profile_codes}. Error: {response.status_code}/{response.reason} - {response.text}. Request url: {_redact_url(response.request.url)}, Request headers: {response.request.headers}, Request body: {response.request.body}.")
@@ -317,6 +323,7 @@ class AulaProxyClient:
                 continue
             if not self._should_retry_request(response, attempt):
                 break
+        response = self._retry_on_401(response, lambda: self._session.post(requesturl, json=post_data, headers=headers, verify=True))
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
                 _LOGGER.error(f"Failed to retrieve calendar events for profileids: {inst_profile_ids}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
@@ -353,6 +360,7 @@ class AulaProxyClient:
                 continue
             if not self._should_retry_request(response, attempt):
                 break
+        response = self._retry_on_401(response, lambda: self._session.get(requesturl, headers=headers, verify=True))
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
                 _LOGGER.error(f"Failed to retrieve daily overview for childids: {child_ids_as_str_list}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
@@ -391,6 +399,7 @@ class AulaProxyClient:
                 continue
             if not self._should_retry_request(response, attempt):
                 break
+        response = self._retry_on_401(response, lambda: self._session.get(requesturl, headers=headers, verify=True))
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
                 _LOGGER.error(f"Failed to retrieve message threads. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
@@ -415,7 +424,7 @@ class AulaProxyClient:
 
         Raises
             PermissionError: If the thread is marked as sensitive or if access is forbidden.
-            ImportError: If the status code of the response is not OK.
+            AulaApiError: If the status code of the response is not OK.
         """
         _LOGGER.debug(f"Fetching messages")
         if not thread: return []
@@ -433,6 +442,7 @@ class AulaProxyClient:
                 continue
             if not self._should_retry_request(response, attempt):
                 break
+        response = self._retry_on_401(response, lambda: self._session.get(requesturl, headers=headers, verify=True))
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
                 _LOGGER.error(f"Failed to retrieve messages from thread: {thread.subject} (id {thread.id}). Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
@@ -471,6 +481,7 @@ class AulaProxyClient:
                 continue
             if not self._should_retry_request(response, attempt):
                 break
+        response = self._retry_on_401(response, lambda: self._session.get(requesturl, headers=headers, verify=True))
         if response == None or response.status_code != HTTPStatus.OK:
             if response is not None:
                 _LOGGER.error(f"Failed to retrieve notifications from children: {child_userids_as_str_list}. Error: {response.status_code}/{response.reason} - {response.text}. Request: {_redact_url(response.request.url)}.")
@@ -534,6 +545,9 @@ class AulaProxyClient:
                     if not first_run:
                         from_datetime += timedelta(weeks=1)
                         continue
+                    # Widget token failure — don't trigger main session reauth
+                    if response.status_code == HTTPStatus.UNAUTHORIZED:
+                        raise AulaApiError(f"Widget {widgetid} returned HTTP 401 after token refresh")
                     self._raise_error(response)
                 return []
             responsedata = response.json()
@@ -613,6 +627,9 @@ class AulaProxyClient:
                         if response is not None:
                             _LOGGER.error(f"Failed to retrieve EasyIQ weekplan for child {child.first_name}. Error: {response.status_code}/{response.reason} - {response.text}.")
                             if first_run:
+                                # Widget token failure — don't trigger main session reauth
+                                if response.status_code == HTTPStatus.UNAUTHORIZED:
+                                    raise AulaApiError(f"Widget {widgetid} returned HTTP 401 after token refresh")
                                 self._raise_error(response)
                             continue
                         continue
@@ -667,6 +684,9 @@ class AulaProxyClient:
                 if response is not None:
                     _LOGGER.error(f"Failed to retrieve newsletters from children: {child_userids_as_str_list} from {from_datetime} to {to_datetime}. Error: {response.status_code}/{response.reason} - {response.text}.")
                     if first_run:
+                        # Widget token failure — don't trigger main session reauth
+                        if response.status_code == HTTPStatus.UNAUTHORIZED:
+                            raise AulaApiError(f"Widget {widgetid} returned HTTP 401 after token refresh")
                         self._raise_error(response)
                 from_datetime += timedelta(weeks=1)
                 first_run = False
@@ -758,8 +778,11 @@ class AulaProxyClient:
                 return token
             responsedata = response.json()
             data = responsedata["data"]
+            if not isinstance(data, str):
+                _LOGGER.warning("Widget token response for %s contained non-string data (%s), skipping: %s", widgetid, type(data).__name__, data)
+                return token
             token = AulaToken(
-                bearer_token = "Bearer " + str(data),
+                bearer_token = "Bearer " + data,
                 timestamp = datetime.now(pytz.utc)
             )
             self._tokens[widgetid] = token
@@ -936,6 +959,23 @@ class AulaProxyClient:
                 return True
         return False
 
+    def _retry_on_401(self, response: Response | None, request_fn: Callable[[], Response]) -> Response | None:
+        """If response is 401, force-refresh the access token and retry once.
+
+        This prevents transient 401s (e.g. token propagation delays on
+        the server side) from triggering a full MitID re-authentication.
+        """
+        if (response is not None
+            and response.status_code == HTTPStatus.UNAUTHORIZED
+            and self._token_refresh_callback is not None
+            and self._token_refresh_callback()):
+            _LOGGER.debug("Got 401, retrying after access token refresh")
+            try:
+                return request_fn()
+            except (RequestsTimeout, RequestsConnectionError):
+                _LOGGER.debug("Retry after token refresh failed with network error")
+        return response
+
     @staticmethod
     def _raise_error(response: Response | None) -> None:
         if response is None: return
@@ -956,4 +996,4 @@ class AulaProxyClient:
             raise AulaCredentialError(message)
         if response.status_code == HTTPStatus.PAYMENT_REQUIRED: raise PermissionError(message)
         if response.status_code == HTTPStatus.FORBIDDEN: raise PermissionError(message)
-        raise ImportError(message)
+        raise AulaApiError(message)

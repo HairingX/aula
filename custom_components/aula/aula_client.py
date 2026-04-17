@@ -52,6 +52,7 @@ class AulaClient:
         self._token_update_callback = token_update_callback
         self._token_lock = threading.Lock()
         self._proxy = AulaProxyClient(access_token, username_for_meebook=mitid_username)
+        self._proxy.set_token_refresh_callback(self._force_refresh_access_token)
 
     def close(self) -> None:
         """Close HTTP sessions."""
@@ -77,6 +78,21 @@ class AulaClient:
         self._ensure_valid_token()
         return self._proxy.login()
 
+    def _force_refresh_access_token(self) -> bool:
+        """Force-refresh the access token, bypassing the expiry check.
+
+        Used as a callback by AulaProxyClient when it receives a 401 from the
+        Aula API after the token was already validated — i.e. a transient
+        server-side issue.  Returns True on success, False on any failure.
+        """
+        self._expires_at = 0  # Force the expiry check to trigger a refresh
+        try:
+            self._ensure_valid_token()
+            return True
+        except Exception:
+            _LOGGER.debug("Forced token refresh failed", exc_info=True)
+            return False
+
     def _ensure_valid_token(self) -> None:
         """Check token expiration and refresh if needed. Thread-safe."""
         if time.time() < self._expires_at - TOKEN_REFRESH_BUFFER_SECONDS:
@@ -86,6 +102,10 @@ class AulaClient:
             # Double-check after acquiring lock — another thread may have refreshed
             if time.time() < self._expires_at - TOKEN_REFRESH_BUFFER_SECONDS:
                 return
+
+            # Guard: no refresh token means we genuinely need re-authentication
+            if not self._refresh_token:
+                raise AulaCredentialError("No refresh token available, re-authentication required")
 
             _LOGGER.debug("Access token expired or expiring soon, attempting refresh")
             self._login_client.tokens = {
@@ -106,7 +126,11 @@ class AulaClient:
                 raise ConnectionError(f"Network error during token refresh: {err}") from err
 
             if not success:
-                raise AulaCredentialError("Token refresh rejected by server")
+                # renew_access_token() returns False for transient issues (malformed
+                # server response, unexpected HTTP status, generic exceptions) — these
+                # are NOT credential rejections and must NOT trigger MitID reauth.
+                _LOGGER.warning("Token refresh returned False — treating as transient failure")
+                raise ConnectionError("Token refresh failed — server returned an unexpected response")
 
             # Extract all new values before updating state
             new_access = self._login_client.tokens["access_token"]
