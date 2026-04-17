@@ -7,21 +7,19 @@ exclude-labels:
 categories:
   - title: '🛠 Breaking Changes'
     labels:
-      - breaking-change
+      - 'breaking-change'
 
   - title: '🚀 Features'
     labels:
-      - 'feature request'
       - 'enhancement'
 
   - title: '🐛 Bug Fixes'
     labels:
-      - 'fix'
-      - 'bugfix'
       - 'bug'
 
   - title: '🧰 Maintenance'
-    label: 'chore'
+    labels:
+      - 'chore'
 
   - title: ":package: Dependencies"
     labels:
@@ -45,6 +43,9 @@ autolabeler:
   - label: 'bug'
     branch:
       - '/fix\/.+/'
-  - label: 'feature request'
+  - label: 'enhancement'
     branch:
       - '/feature\/.+/'
+  - label: 'chore'
+    branch:
+      - '/chore\/.+/'

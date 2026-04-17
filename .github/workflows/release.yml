@@ -1,23 +1,25 @@
 name: Release
 
 on:
-  workflow_dispatch:
   release:
     types: [published]
-
-env:
-  COMPONENT_DIR: aula
 
 jobs:
   release_zip_file:
     name: Prepare release asset
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Update manifest.json version to ${{ github.event.release.tag_name }}
+        with:
+          ref: main
+      - name: Update manifest.json version
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          python3 ${{ github.workspace }}/.github/scripts/update_hacs_manifest.py --version ${{ github.event.release.tag_name }} --path /custom_components/aula/
+          python3 ${{ github.workspace }}/.github/scripts/update_hacs_manifest.py --version "$TAG_NAME" --path /custom_components/aula/
       - name: Commit manifest update
         run: |
           git config user.name github-actions
@@ -28,12 +30,14 @@ jobs:
       - name: Create zip
         run: |
           cd custom_components/aula
-          zip aula.zip -r ./
+          zip aula.zip -r ./ -x "test_*" -x "__pycache__/*" -x "*.pyc"
       - name: Upload zip to release
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ./custom_components/aula/aula.zip
           asset_name: aula.zip
-          tag: ${{ github.ref }}
+          tag: ${{ env.TAG_NAME }}
           overwrite: true

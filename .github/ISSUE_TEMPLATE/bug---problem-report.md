@@ -3,7 +3,7 @@ name: Bug / problem report
 about: Report a problem so we can improve the integration
 title: ''
 labels: 
-assignees: scaarup
+assignees: HairingX
 
 ---
 

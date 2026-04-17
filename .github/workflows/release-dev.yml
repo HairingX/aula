@@ -2,26 +2,38 @@ name: Release dev
 
 on:
   workflow_dispatch:
-
-env:
-  COMPONENT_DIR: aula
+    inputs:
+      tag:
+        description: 'Tag name for the dev release (e.g. v0.3.0-dev.1)'
+        required: true
 
 jobs:
   release_zip_file:
     name: Prepare release asset
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Validate tag format
+        env:
+          TAG_NAME: ${{ github.event.inputs.tag }}
+        run: |
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::Tag must start with vX.Y.Z (e.g. v0.3.0-dev.1)"
+            exit 1
+          fi
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Create zip
         run: |
           cd custom_components/aula
-          zip aula.zip -r ./
+          zip aula.zip -r ./ -x "test_*" -x "__pycache__/*" -x "*.pyc"
       - name: Upload zip to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ./custom_components/aula/aula.zip
           asset_name: aula.zip
-          tag: ${{ github.ref }}
+          tag: ${{ github.event.inputs.tag }}
           overwrite: true
+          prerelease: true

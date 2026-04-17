@@ -2,7 +2,12 @@ name: Code validation
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   validate-hassfest:
@@ -16,11 +21,11 @@ jobs:
 
   validate-hacs:
     name: HACS validation
-    runs-on: "ubuntu-latest"
+    runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: "actions/checkout@v4"
+        uses: actions/checkout@v4
       - name: validation
-        uses: "hacs/action@main"
+        uses: hacs/action@main
         with:
-          category: "integration"
+          category: integration
