@@ -62,16 +62,15 @@ class TestRetryOn401(unittest.TestCase):
         callback.assert_called_once()
         request_fn.assert_called_once()
 
-    def test_callback_returns_false(self):
-        """Refresh fails → returns original 401, no retry request made."""
+    def test_callback_returns_false_raises_connection_error(self):
+        """Transient refresh failure → raises ConnectionError (not reauth)."""
         resp_401 = _make_response(401)
         callback = Mock(return_value=False)
         request_fn = Mock()
 
         self.client.set_token_refresh_callback(callback)
-        result = self.client._retry_on_401(resp_401, request_fn)
-
-        self.assertIs(result, resp_401)
+        with self.assertRaises(ConnectionError):
+            self.client._retry_on_401(resp_401, request_fn)
         request_fn.assert_not_called()
 
     def test_no_callback_set(self):
@@ -95,27 +94,56 @@ class TestRetryOn401(unittest.TestCase):
         result = self.client._retry_on_401(None, Mock())
         self.assertIsNone(result)
 
-    def test_retry_network_error_returns_original(self):
-        """If the retry request fails with a network error, return the original 401."""
+    def test_retry_network_error_raises_connection_error(self):
+        """If the retry request fails with a network error, raise ConnectionError (not reauth)."""
         resp_401 = _make_response(401)
         callback = Mock(return_value=True)
         request_fn = Mock(side_effect=RequestsConnectionError("conn error"))
 
         self.client.set_token_refresh_callback(callback)
-        result = self.client._retry_on_401(resp_401, request_fn)
+        with self.assertRaises(ConnectionError):
+            self.client._retry_on_401(resp_401, request_fn)
 
-        self.assertIs(result, resp_401)
-
-    def test_retry_timeout_returns_original(self):
-        """If the retry request times out, return the original 401."""
+    def test_retry_timeout_raises_connection_error(self):
+        """If the retry request times out, raise ConnectionError (not reauth)."""
         resp_401 = _make_response(401)
         callback = Mock(return_value=True)
         request_fn = Mock(side_effect=RequestsTimeout("timeout"))
 
         self.client.set_token_refresh_callback(callback)
-        result = self.client._retry_on_401(resp_401, request_fn)
+        with self.assertRaises(ConnectionError):
+            self.client._retry_on_401(resp_401, request_fn)
 
-        self.assertIs(result, resp_401)
+    def test_retry_still_401_raises_connection_error(self):
+        """If retry also returns 401, raise ConnectionError — token was just refreshed so this is transient."""
+        resp_401 = _make_response(401)
+        retry_401 = _make_response(401)
+        callback = Mock(return_value=True)
+        request_fn = Mock(return_value=retry_401)
+
+        self.client.set_token_refresh_callback(callback)
+        with self.assertRaises(ConnectionError):
+            self.client._retry_on_401(resp_401, request_fn)
+
+    def test_retry_non_401_error_returned(self):
+        """If retry returns a non-401 error (e.g. 500), return it for normal error handling."""
+        resp_401 = _make_response(401)
+        resp_500 = _make_response(500)
+        callback = Mock(return_value=True)
+        request_fn = Mock(return_value=resp_500)
+
+        self.client.set_token_refresh_callback(callback)
+        result = self.client._retry_on_401(resp_401, request_fn)
+        self.assertEqual(result.status_code, 500)
+
+    def test_callback_credential_error_propagates(self):
+        """AulaCredentialError from callback propagates (triggers reauth)."""
+        resp_401 = _make_response(401)
+        callback = Mock(side_effect=AulaCredentialError("expired"))
+
+        self.client.set_token_refresh_callback(callback)
+        with self.assertRaises(AulaCredentialError):
+            self.client._retry_on_401(resp_401, Mock())
 
 
 # ---------------------------------------------------------------------------
@@ -340,8 +368,8 @@ class TestEnsureValidToken(unittest.TestCase):
 
         self.assertTrue(result)
 
-    def test_force_refresh_failure_returns_false(self):
-        """_force_refresh_access_token returns False on any failure."""
+    def test_force_refresh_transient_failure_returns_false(self):
+        """_force_refresh_access_token returns False on transient failure (ConnectionError)."""
         client, login_client = self._make_client(expires_at=0)
         login_client.renew_access_token.return_value = False
 
@@ -349,8 +377,17 @@ class TestEnsureValidToken(unittest.TestCase):
 
         self.assertFalse(result)
 
+    def test_force_refresh_credential_error_propagates(self):
+        """_force_refresh_access_token lets AulaCredentialError propagate."""
+        from custom_components.aula.aula_login_client.exceptions import TokenExpiredError
+        client, login_client = self._make_client(expires_at=0)
+        login_client.renew_access_token.side_effect = TokenExpiredError("expired")
+
+        with self.assertRaises(AulaCredentialError):
+            client._force_refresh_access_token()
+
     def test_force_refresh_unexpected_exception_returns_false(self):
-        """_force_refresh_access_token catches unexpected exceptions."""
+        """_force_refresh_access_token catches unexpected (non-credential) exceptions."""
         client, login_client = self._make_client(expires_at=0)
         login_client.renew_access_token.side_effect = RuntimeError("unexpected")
 

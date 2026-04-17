@@ -83,14 +83,21 @@ class AulaClient:
 
         Used as a callback by AulaProxyClient when it receives a 401 from the
         Aula API after the token was already validated — i.e. a transient
-        server-side issue.  Returns True on success, False on any failure.
+        server-side issue.  Returns True on success, False on transient failure.
+
+        Raises:
+            AulaCredentialError: If credentials are permanently invalid
+                (expired refresh token, no refresh token). This must propagate
+                to the coordinator so reauth is triggered immediately.
         """
         self._expires_at = 0  # Force the expiry check to trigger a refresh
         try:
             self._ensure_valid_token()
             return True
+        except AulaCredentialError:
+            raise  # Permanent credential failure — must trigger reauth
         except Exception:
-            _LOGGER.debug("Forced token refresh failed", exc_info=True)
+            _LOGGER.debug("Forced token refresh failed (transient)", exc_info=True)
             return False
 
     def _ensure_valid_token(self) -> None:

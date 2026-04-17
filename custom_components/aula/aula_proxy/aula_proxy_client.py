@@ -151,8 +151,13 @@ class AulaProxyClient:
         _LOGGER.debug("Logging in with token-based auth")
         self._is_logged_in = False
         if self._session and self._apiurl:
-            login_responsedata = self._session.get(self._apiurl + "?method=profiles.getProfilesByLogin", verify=True).json()
-            self._is_logged_in = login_responsedata["status"]["message"] == "OK"
+            try:
+                login_response = self._session.get(self._apiurl + "?method=profiles.getProfilesByLogin", verify=True)
+                if login_response.status_code == HTTPStatus.OK:
+                    login_responsedata = login_response.json()
+                    self._is_logged_in = login_responsedata["status"]["message"] == "OK"
+            except (json.JSONDecodeError, KeyError, RequestsTimeout, RequestsConnectionError) as e:
+                _LOGGER.debug("Quick login check failed, will proceed with full login: %s", e)
 
         _LOGGER.debug(f"Logged in already? {self._is_logged_in}")
 
@@ -198,48 +203,61 @@ class AulaProxyClient:
             # PROFILE CONTEXT (widgets & set user ids on profiles and children)
             api_method_context = "profiles.getProfileContext"
             response =  self._session.get(f"{self._apiurl}?method={api_method_context}&portalrole=guardian",verify=True)
-            responsedata_context: AulaGetProfileContextResponse = response.json()
-            data = responsedata_context["data"]
-            #set user id on logged in profile
-            userid = data["userId"]
-            for profile in profiles:
-                profile.user_id = userid
+            if response.status_code == HTTPStatus.FORBIDDEN:
+                raise AulaCredentialError(f"Access denied for {api_method_context}")
+            if response.status_code != HTTPStatus.OK:
+                _LOGGER.warning(f"Failed to fetch {api_method_context}: HTTP {response.status_code}, some data may be missing")
+            else:
+                try:
+                    responsedata_context: AulaGetProfileContextResponse = response.json()
+                    data = responsedata_context["data"]
+                    #set user id on logged in profile
+                    userid = data["userId"]
+                    for profile in profiles:
+                        profile.user_id = userid
 
-            #set user id on children profiles
-            children = dict((child.id, child) for child in self.flatten_children(profiles))
-            institutions = None if "institutions" not in data else data["institutions"]
-            if institutions:
-                for institutiondata in institutions:
-                    if "children" in institutiondata and institutiondata["children"] is not None:
-                        for childdata in institutiondata["children"]:
-                            child = children.get(childdata["id"])
-                            if child: child.user_id = childdata["userId"]
+                    #set user id on children profiles
+                    children = dict((child.id, child) for child in self.flatten_children(profiles))
+                    institutions = None if "institutions" not in data else data["institutions"]
+                    if institutions:
+                        for institutiondata in institutions:
+                            if "children" in institutiondata and institutiondata["children"] is not None:
+                                for childdata in institutiondata["children"]:
+                                    child = children.get(childdata["id"])
+                                    if child: child.user_id = childdata["userId"]
 
-            #read widgets (used to identify supported features)
-            detected_widgetsdata = responsedata_context["data"]["pageConfiguration"]["widgetConfigurations"]
-            try:
-                widgets = AulaProfileParser.parse_widgets([widgetconfdata["widget"] for widgetconfdata in detected_widgetsdata])
-            except Exception as e:
-                _LOGGER.info(f"method={api_method_context} response: {responsedata_context}")
-                _LOGGER.error(f"Error parsing widgets: {e}")
+                    #read widgets (used to identify supported features)
+                    detected_widgetsdata = responsedata_context["data"]["pageConfiguration"]["widgetConfigurations"]
+                    try:
+                        widgets = AulaProfileParser.parse_widgets([widgetconfdata["widget"] for widgetconfdata in detected_widgetsdata])
+                    except Exception as e:
+                        _LOGGER.info(f"method={api_method_context} response: {responsedata_context}")
+                        _LOGGER.error(f"Error parsing widgets: {e}")
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    _LOGGER.warning(f"Failed to parse {api_method_context} response: {e}")
 
         if len(profiles) > 0:
             # PROFILE MASTER DATA (set master group on children)
             api_method_masterdata = "profiles.getProfileMasterData"
             inst_profile_ids = list(set(str(institution_profile.id) for profile in profiles for institution_profile in profile.institution_profiles))
             response = self._session.get(f"{self._apiurl}?method={api_method_masterdata}&instProfileIds[]={"&instProfileIds[]=".join(inst_profile_ids)}&fromAdministration=false",verify=True)
-            responsedata_masterdata: AulaGetProfileMasterDataResponse = response.json()
-            #set master group on children profiles
-            relations = AulaProfileParser.parse_profile_master_data_response(responsedata_masterdata)
-            children = dict((child.id, child) for child in self.flatten_children(profiles))
+            if response.status_code != HTTPStatus.OK:
+                _LOGGER.warning(f"Failed to fetch {api_method_masterdata}: HTTP {response.status_code}, master group data may be missing")
+            else:
+                try:
+                    responsedata_masterdata: AulaGetProfileMasterDataResponse = response.json()
+                    #set master group on children profiles
+                    relations = AulaProfileParser.parse_profile_master_data_response(responsedata_masterdata)
+                    children = dict((child.id, child) for child in self.flatten_children(profiles))
 
-            try:
-                for relation in relations:
-                    child = children.get(relation.child_id)
-                    if child: child.main_group = relation.main_group
-            except Exception as e:
-                _LOGGER.info(f"method={api_method_masterdata} response: {responsedata_masterdata}")
-                _LOGGER.error(f"Error assigning main groups: {e}")
+                    for relation in relations:
+                        child = children.get(relation.child_id)
+                        if child: child.main_group = relation.main_group
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    _LOGGER.warning(f"Failed to parse {api_method_masterdata} response: {e}")
+                except Exception as e:
+                    _LOGGER.info(f"method={api_method_masterdata} response: {response.text}")
+                    _LOGGER.error(f"Error assigning main groups: {e}")
 
         result = AulaLoginData(
             profiles = profiles,
@@ -573,7 +591,10 @@ class AulaProxyClient:
             for profile in self._login_result.profiles:
                 if profile.user_id:
                     return profile.user_id
-        responsedata = self._session.get(f"{self._apiurl}?method=profiles.getProfileContext&portalrole=guardian", verify=True).json()
+        response = self._session.get(f"{self._apiurl}?method=profiles.getProfileContext&portalrole=guardian", verify=True)
+        if response.status_code != HTTPStatus.OK:
+            raise AulaApiError(f"Failed to fetch guardian user ID: HTTP {response.status_code}")
+        responsedata = response.json()
         return responsedata["data"]["userId"]
 
     def get_easyiq_weekly_plans(self, profiles: List[AulaChildProfile], from_datetime: datetime, to_datetime: datetime) -> List[AulaEasyiqWeeklyPlan]:
@@ -801,27 +822,6 @@ class AulaProxyClient:
                 return token
         return self._refresh_token(widgetid)
 
-    def _get_user_id(self, profiles: List[AulaProfile]) -> str:
-        """Ensures that each profile in the provided list has a user_id by fetching it from the API."""
-        currentid: str|None = None
-        for profile in profiles:
-            if profile.user_id:
-                currentid = profile.user_id
-            else:
-                currentid = None
-                break
-
-        if currentid is not None:
-            return currentid
-
-        responsedata = self._session.get(f"{self._apiurl}?method=profiles.getProfileContext&portalrole=guardian",verify=True,).json()
-        newid = responsedata["data"]["userId"]
-
-        for profile in profiles:
-            profile.user_id = newid
-
-        return newid
-
     def has_widget(self, widget_match: AulaWidgetId) -> bool:
         widgets = [] if self._login_result is None else self._login_result.widgets
         return any(widget.widget_id == widget_match for widget in widgets)
@@ -964,17 +964,31 @@ class AulaProxyClient:
 
         This prevents transient 401s (e.g. token propagation delays on
         the server side) from triggering a full MitID re-authentication.
+
+        AulaCredentialError from the callback (permanent credential failure)
+        is allowed to propagate — the coordinator will convert it to reauth.
         """
-        if (response is not None
-            and response.status_code == HTTPStatus.UNAUTHORIZED
-            and self._token_refresh_callback is not None
-            and self._token_refresh_callback()):
-            _LOGGER.debug("Got 401, retrying after access token refresh")
-            try:
-                return request_fn()
-            except (RequestsTimeout, RequestsConnectionError):
-                _LOGGER.debug("Retry after token refresh failed with network error")
-        return response
+        if response is None or response.status_code != HTTPStatus.UNAUTHORIZED:
+            return response
+        if self._token_refresh_callback is None:
+            return response
+        # Callback may raise AulaCredentialError for permanent failures — let it propagate
+        if not self._token_refresh_callback():
+            # Transient refresh failure — don't let the original 401 trigger reauth
+            _LOGGER.warning("Access token refresh failed (transient), returning error without reauth")
+            raise ConnectionError("Access token refresh failed — could not retry after 401")
+        _LOGGER.debug("Got 401, retrying after access token refresh")
+        try:
+            retried = request_fn()
+        except (RequestsTimeout, RequestsConnectionError):
+            _LOGGER.debug("Retry after token refresh failed with network error")
+            raise ConnectionError("Request failed after token refresh (network error)")
+        if retried is not None and retried.status_code == HTTPStatus.UNAUTHORIZED:
+            # Token was JUST refreshed successfully but API still returns 401 —
+            # this is almost certainly a transient server-side issue, not dead credentials.
+            _LOGGER.warning("API returned 401 even after successful token refresh — treating as transient")
+            raise ConnectionError("API returned 401 after successful token refresh")
+        return retried
 
     @staticmethod
     def _raise_error(response: Response | None) -> None:
