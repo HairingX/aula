@@ -24,6 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          pip install beautifulsoup4 lxml
       - name: Run tests
         run: |
           python -m unittest discover -v -s ./custom_components/aula/aula_proxy -p "test_*.py"
