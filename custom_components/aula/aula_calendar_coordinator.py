@@ -260,7 +260,13 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
     #region Birthdays
 
     async def get_birthdays_for_interval(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaBirthdayEvent]:
-        return await self.hass.async_add_executor_job(self._client.get_birthday_events, profiles, start_datetime, end_datetime)
+        try:
+            return await self.hass.async_add_executor_job(self._client.get_birthday_events, profiles, start_datetime, end_datetime)
+        except AulaCredentialError as err:
+            raise ConfigEntryAuthFailed from err
+        except Exception as ex:
+            _LOGGER.warning("Failed to fetch birthdays for interval: %s", ex)
+            return []
 
     def get_birthdays(self, profile: AulaChildProfile) -> List[AulaBirthdayEvent]:
         key = profile.id
@@ -308,7 +314,13 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
     #region Events
 
     async def get_events_for_interval(self, profiles: List[AulaInstitutionProfile], start_date: datetime.datetime, end_date: datetime.datetime) -> List[AulaCalendarEvent]:
-        return await self.hass.async_add_executor_job(self._client.get_calendar_events, profiles, start_date, end_date)
+        try:
+            return await self.hass.async_add_executor_job(self._client.get_calendar_events, profiles, start_date, end_date)
+        except AulaCredentialError as err:
+            raise ConfigEntryAuthFailed from err
+        except Exception as ex:
+            _LOGGER.warning("Failed to fetch events for interval: %s", ex)
+            return []
 
     def get_events(self, profile: AulaInstitutionProfile) -> List[AulaCalendarEvent]:
         key = profile.id
@@ -354,7 +366,13 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
     #region Weekly Plans
 
     async def get_weekly_plans_for_interval(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaWeeklyPlan]:
-        return await self.hass.async_add_executor_job(self._client.get_weekly_plans, profiles, start_datetime, end_datetime)
+        try:
+            return await self.hass.async_add_executor_job(self._client.get_weekly_plans, profiles, start_datetime, end_datetime)
+        except AulaCredentialError as err:
+            raise ConfigEntryAuthFailed from err
+        except Exception as ex:
+            _LOGGER.warning("Failed to fetch weekly plans for interval: %s", ex)
+            return []
 
     def get_weekly_plans(self, profile: AulaChildProfile) -> List[AulaWeeklyPlan]:
         key = profile.id
@@ -402,7 +420,13 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
     #region EasyIQ Weekly Plans
 
     async def get_easyiq_weekly_plans_for_interval(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaEasyiqWeeklyPlan]:
-        return await self.hass.async_add_executor_job(self._client.get_easyiq_weekly_plans, profiles, start_datetime, end_datetime)
+        try:
+            return await self.hass.async_add_executor_job(self._client.get_easyiq_weekly_plans, profiles, start_datetime, end_datetime)
+        except AulaCredentialError as err:
+            raise ConfigEntryAuthFailed from err
+        except Exception as ex:
+            _LOGGER.warning("Failed to fetch EasyIQ weekly plans for interval: %s", ex)
+            return []
 
     def get_easyiq_weekly_plans(self, profile: AulaChildProfile) -> List[AulaEasyiqWeeklyPlan]:
         key = profile.id
@@ -449,7 +473,13 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
     #region Newsletters (MinUddannelse)
 
     async def get_newsletters_for_interval(self, profiles: List[AulaChildProfile], start_datetime: datetime.datetime, end_datetime: datetime.datetime) -> List[AulaWeeklyNewsletter]:
-        return await self.hass.async_add_executor_job(self._client.get_newsletters, profiles, start_datetime, end_datetime)
+        try:
+            return await self.hass.async_add_executor_job(self._client.get_newsletters, profiles, start_datetime, end_datetime)
+        except AulaCredentialError as err:
+            raise ConfigEntryAuthFailed from err
+        except Exception as ex:
+            _LOGGER.warning("Failed to fetch newsletters for interval: %s", ex)
+            return []
 
     def get_newsletters(self, profile: AulaChildProfile) -> List[AulaWeeklyNewsletter]:
         key = profile.id
