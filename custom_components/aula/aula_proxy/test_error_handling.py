@@ -218,45 +218,487 @@ class TestRefreshTokenValidation(unittest.TestCase):
         self.assertIsNotNone(token)
         self.assertEqual(token.bearer_token, "Bearer some-jwt-token")
 
-    def test_dict_data_rejected(self):
-        """Dict data (e.g. error payload) → returns old token, not garbage."""
+    def test_force_dict_data_raises(self):
+        """force=True + dict data → raises AulaApiError (never returns stale garbage)."""
         resp = _make_response(200, {"data": {"error": "expired"}})
         with patch.object(self.client._session, "get", return_value=resp):
             from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
-            token = self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-        # Should return None (no previous token) rather than garbage
-        self.assertIsNone(token)
+            with self.assertRaises(AulaApiError):
+                self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
 
-    def test_none_data_rejected(self):
-        """None data → returns old token."""
+    def test_force_none_data_raises(self):
+        """force=True + None data → raises AulaApiError."""
         resp = _make_response(200, {"data": None})
         with patch.object(self.client._session, "get", return_value=resp):
             from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
-            token = self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-        self.assertIsNone(token)
+            with self.assertRaises(AulaApiError):
+                self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
 
-    def test_int_data_rejected(self):
-        """Integer data → returns old token."""
+    def test_force_int_data_raises(self):
+        """force=True + integer data → raises AulaApiError."""
         resp = _make_response(200, {"data": 12345})
         with patch.object(self.client._session, "get", return_value=resp):
             from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
-            token = self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-        self.assertIsNone(token)
+            with self.assertRaises(AulaApiError):
+                self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
 
-    def test_http_error_returns_old_token(self):
-        """Non-200 → returns previous token (None if no previous)."""
+    def test_force_http_error_raises(self):
+        """force=True + non-200 → raises AulaApiError (never silently returns stale token)."""
         resp = _make_response(500)
         with patch.object(self.client._session, "get", return_value=resp):
             from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
-            token = self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-        self.assertIsNone(token)
+            with self.assertRaises(AulaApiError):
+                self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
 
-    def test_network_error_returns_old_token(self):
-        """Network error → returns previous token."""
+    def test_force_network_error_raises(self):
+        """force=True + network error → raises AulaApiError (never silently returns stale token)."""
         with patch.object(self.client._session, "get", side_effect=RequestsTimeout("timeout")):
             from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+            with self.assertRaises(AulaApiError):
+                self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
+
+    def test_force_failure_clears_stale_cached_token(self):
+        """force=True + failure → removes the stale token from the cache so the next poll starts fresh."""
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaToken
+        from datetime import datetime, timedelta
+        import pytz
+        stale = AulaToken(bearer_token="Bearer stale", timestamp=datetime.now(pytz.utc) - timedelta(hours=1))
+        self.client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = stale
+
+        resp = _make_response(500)
+        with patch.object(self.client._session, "get", return_value=resp):
+            with self.assertRaises(AulaApiError):
+                self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
+        self.assertNotIn(AulaWidgetId.WEEKPLAN_PARENTS, self.client._tokens)
+
+    def test_non_force_http_error_returns_old_token(self):
+        """force=False + non-200 → returns previously cached token (graceful degradation for non-critical refresh)."""
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaToken
+        from datetime import datetime, timedelta
+        import pytz
+        # Previous token older than 5 min so non-force attempts a refresh, but not expired
+        previous = AulaToken(bearer_token="Bearer prev", timestamp=datetime.now(pytz.utc) - timedelta(minutes=10))
+        self.client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = previous
+
+        resp = _make_response(500)
+        with patch.object(self.client._session, "get", return_value=resp):
+            token = self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=False)
+        self.assertIs(token, previous)
+        self.assertIs(self.client._tokens[AulaWidgetId.WEEKPLAN_PARENTS], previous)
+
+    def test_non_force_network_error_returns_old_token(self):
+        """force=False + network error → returns previously cached token (graceful degradation)."""
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaToken
+        from datetime import datetime, timedelta
+        import pytz
+        previous = AulaToken(bearer_token="Bearer prev", timestamp=datetime.now(pytz.utc) - timedelta(minutes=10))
+        self.client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = previous
+
+        with patch.object(self.client._session, "get", side_effect=RequestsTimeout("timeout")):
+            token = self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=False)
+        self.assertIs(token, previous)
+
+
+# ---------------------------------------------------------------------------
+# JWT exp decoding and _get_token cache invalidation
+# ---------------------------------------------------------------------------
+
+def _make_jwt(exp_timestamp: int | None) -> str:
+    """Build a fake JWT with the given exp claim (or no exp). Signature is dummy."""
+    import base64
+    header = base64.urlsafe_b64encode(b'{"alg":"HS256"}').rstrip(b'=').decode()
+    claims = {"exp": exp_timestamp} if exp_timestamp is not None else {}
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b'=').decode()
+    signature = "dummy"
+    return f"{header}.{payload}.{signature}"
+
+
+class TestJwtExpDecoding(unittest.TestCase):
+    """Tests for _decode_jwt_exp and _get_token cache invalidation using JWT exp."""
+
+    def test_decode_valid_jwt_exp(self):
+        """Valid JWT with exp claim is decoded to UTC datetime."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import _decode_jwt_exp
+        import pytz
+        from datetime import datetime
+        future = int(time.time()) + 3600
+        jwt = _make_jwt(future)
+        result = _decode_jwt_exp(jwt)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.tzinfo, pytz.utc)
+        self.assertEqual(int(result.timestamp()), future)
+
+    def test_decode_jwt_without_exp_returns_none(self):
+        from custom_components.aula.aula_proxy.aula_proxy_client import _decode_jwt_exp
+        jwt = _make_jwt(None)
+        self.assertIsNone(_decode_jwt_exp(jwt))
+
+    def test_decode_malformed_jwt_returns_none(self):
+        from custom_components.aula.aula_proxy.aula_proxy_client import _decode_jwt_exp
+        self.assertIsNone(_decode_jwt_exp("not-a-jwt"))
+        self.assertIsNone(_decode_jwt_exp("only.two"))
+        self.assertIsNone(_decode_jwt_exp(""))
+
+    def test_decode_jwt_exp_in_milliseconds_returns_none(self):
+        """Some broken issuers use ms instead of seconds. Reject to avoid caching forever."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import _decode_jwt_exp
+        ms_timestamp = (int(time.time()) + 3600) * 1000  # ms-encoded
+        jwt = _make_jwt(ms_timestamp)
+        # ms timestamps would be year ~50000+ — must be rejected
+        self.assertIsNone(_decode_jwt_exp(jwt))
+
+    def test_decode_jwt_exp_negative_returns_none(self):
+        from custom_components.aula.aula_proxy.aula_proxy_client import _decode_jwt_exp
+        self.assertIsNone(_decode_jwt_exp(_make_jwt(-1)))
+        self.assertIsNone(_decode_jwt_exp(_make_jwt(0)))
+
+    def test_already_expired_jwt_logged_as_error(self):
+        """Aula returning a JWT that's already expired must be logged loudly as an Aula server bug."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+        # JWT with exp 60s in the past (already expired at issuance)
+        expired_jwt = _make_jwt(int(time.time()) - 60)
+        resp = _make_response(200, {"data": expired_jwt})
+
+        with patch.object(client._session, "get", return_value=resp):
+            with self.assertLogs("custom_components.aula.aula_proxy.aula_proxy_client", level="ERROR") as cm:
+                token = client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
+        # Token IS still returned (Meebook may have clock skew tolerance)
+        self.assertIsNotNone(token)
+        # But the error was logged loudly
+        self.assertTrue(any("ALREADY-EXPIRED" in msg for msg in cm.output))
+        self.assertTrue(any("Aula server-side bug" in msg for msg in cm.output))
+
+    def test_get_token_uses_jwt_exp_for_cache_invalidation(self):
+        """If JWT exp has passed, _get_token must refresh — not return cached."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaToken
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        from datetime import datetime, timedelta
+        import pytz
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+        # Cached token: timestamp is fresh (5s ago) but JWT exp was 1 second ago
+        expired_jwt_exp = datetime.now(pytz.utc) - timedelta(seconds=1)
+        client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = AulaToken(
+            bearer_token="Bearer expired",
+            timestamp=datetime.now(pytz.utc) - timedelta(seconds=5),
+            expires_at=expired_jwt_exp,
+        )
+
+        # _get_token should not return the expired token — it should call _refresh_token
+        new_jwt = _make_jwt(int(time.time()) + 3600)
+        resp = _make_response(200, {"data": new_jwt})
+        with patch.object(client._session, "get", return_value=resp):
+            result = client._get_token(AulaWidgetId.WEEKPLAN_PARENTS)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.bearer_token, f"Bearer {new_jwt}")
+        self.assertIsNotNone(result.expires_at)
+
+    def test_get_token_reuses_cached_token_when_jwt_exp_is_future(self):
+        """If JWT exp is comfortably in the future, _get_token returns cached without HTTP call."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaToken
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        from datetime import datetime, timedelta
+        import pytz
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+        # JWT exp is 1 hour in the future — cache should be reused
+        future_exp = datetime.now(pytz.utc) + timedelta(hours=1)
+        cached = AulaToken(
+            bearer_token="Bearer cached",
+            timestamp=datetime.now(pytz.utc),
+            expires_at=future_exp,
+        )
+        client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = cached
+
+        with patch.object(client._session, "get") as mock_get:
+            result = client._get_token(AulaWidgetId.WEEKPLAN_PARENTS)
+        self.assertIs(result, cached)
+        mock_get.assert_not_called()
+
+    def test_concurrent_refresh_serialized_by_lock(self):
+        """Two threads calling _refresh_token concurrently → only one HTTP call thanks to lock + double-check."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+
+        new_jwt = _make_jwt(int(time.time()) + 3600)
+        call_count = 0
+        call_lock = threading.Lock()
+
+        def slow_get(*args, **kwargs):
+            nonlocal call_count
+            with call_lock:
+                call_count += 1
+            # simulate network latency
+            time.sleep(0.05)
+            return _make_response(200, {"data": new_jwt})
+
+        with patch.object(client._session, "get", side_effect=slow_get):
+            results = []
+            errors = []
+
+            def run():
+                try:
+                    results.append(client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=False))
+                except Exception as e:
+                    errors.append(e)
+
+            threads = [threading.Thread(target=run) for _ in range(3)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=5)
+
+        self.assertEqual(len(errors), 0, f"Unexpected errors: {errors}")
+        self.assertEqual(len(results), 3)
+        # All threads should get the same token (only one HTTP call thanks to double-check)
+        self.assertTrue(all(r is not None for r in results))
+        self.assertTrue(all(r.bearer_token == results[0].bearer_token for r in results))
+        # Ideally call_count == 1; allow up to 1 due to the double-check pattern
+        self.assertEqual(call_count, 1, "Lock + double-check should serialize to a single HTTP refresh")
+
+    def test_get_token_falls_back_to_timestamp_when_no_jwt_exp(self):
+        """When JWT exp can't be parsed, fall back to TOKEN_EXPIRATION_TIME wall-clock window."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaToken
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        from datetime import datetime, timedelta
+        import pytz
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+        # No expires_at — fall back to wall-clock cache
+        cached = AulaToken(
+            bearer_token="Bearer cached",
+            timestamp=datetime.now(pytz.utc) - timedelta(minutes=5),  # 5 min old, still within 40min window
+            expires_at=None,
+        )
+        client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = cached
+
+        with patch.object(client._session, "get") as mock_get:
+            result = client._get_token(AulaWidgetId.WEEKPLAN_PARENTS)
+        self.assertIs(result, cached)
+        mock_get.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# getAulaToken retry behavior (transient 5xx, network errors, main-session 401)
+# ---------------------------------------------------------------------------
+
+class TestGetAulaTokenRetry(unittest.TestCase):
+    """Tests that _refresh_token absorbs transient failures of the aulaToken endpoint.
+
+    Without these retries, a single 500 or network blip on Aula's token endpoint
+    would either silently return a stale token (non-force) or raise AulaApiError
+    (force) — both unnecessary given the failure is usually sub-second.
+    """
+
+    def setUp(self):
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        self.client = AulaProxyClient("test-token")
+        self.client._apiurl = "https://example.com/api/v1"
+
+    def test_transient_5xx_recovers_via_retry(self):
+        """500 on first attempt, 200 on second → returns fresh token, no error."""
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        jwt = _make_jwt(int(time.time()) + 3600)
+        responses = iter([
+            _make_response(500, text="transient"),
+            _make_response(200, {"data": jwt}),
+        ])
+        with patch.object(self.client._session, "get", side_effect=lambda *a, **kw: next(responses)):
             token = self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-        self.assertIsNone(token)
+        self.assertIsNotNone(token)
+        self.assertEqual(token.bearer_token, f"Bearer {jwt}")
+
+    def test_transient_timeout_recovers_via_retry(self):
+        """Timeout on first attempt, 200 on second → returns fresh token."""
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        jwt = _make_jwt(int(time.time()) + 3600)
+        calls = {"n": 0}
+        def side_effect(*a, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RequestsTimeout("first attempt times out")
+            return _make_response(200, {"data": jwt})
+        with patch.object(self.client._session, "get", side_effect=side_effect):
+            token = self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
+        self.assertIsNotNone(token)
+        self.assertEqual(token.bearer_token, f"Bearer {jwt}")
+
+    def test_persistent_5xx_exhausts_retries_and_raises_in_force_mode(self):
+        """All attempts 500 → force-mode raises with diagnostic HTTP status."""
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        with patch.object(self.client._session, "get", return_value=_make_response(500, text="down")):
+            with self.assertRaises(AulaApiError) as ctx:
+                self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
+        self.assertIn("500", str(ctx.exception))
+
+    def test_main_session_401_triggers_callback_and_retries(self):
+        """401 from getAulaToken → token-refresh-callback invoked → retry succeeds on fresh session."""
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        jwt = _make_jwt(int(time.time()) + 3600)
+        callback_called = {"n": 0}
+        def callback():
+            callback_called["n"] += 1
+            return True
+        self.client.set_token_refresh_callback(callback)
+
+        # Pattern: all retry attempts return 401 (5xx-retry doesn't help for 401),
+        # then _retry_on_401 invokes callback and re-calls session.get → 200.
+        call_n = {"n": 0}
+        def side_effect(*a, **kw):
+            call_n["n"] += 1
+            # First REQUEST_MAX_ATTEMPTS attempts hit the retry loop with 401
+            # After _retry_on_401 invokes callback, the lambda retries → return 200
+            if callback_called["n"] == 0:
+                return _make_response(401, text="main session expired")
+            return _make_response(200, {"data": jwt})
+
+        with patch.object(self.client._session, "get", side_effect=side_effect):
+            token = self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
+
+        self.assertIsNotNone(token)
+        self.assertEqual(token.bearer_token, f"Bearer {jwt}")
+        self.assertEqual(callback_called["n"], 1, "main-session refresh callback must have been invoked")
+
+    def test_main_session_401_without_callback_fails_in_force_mode(self):
+        """No callback set + 401 → force-mode raises (retry does not rescue)."""
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        # No callback set on client — _retry_on_401 passes 401 through unchanged
+        with patch.object(self.client._session, "get", return_value=_make_response(401, text="expired")):
+            with self.assertRaises(AulaApiError) as ctx:
+                self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
+        self.assertIn("401", str(ctx.exception))
+
+    def test_credential_error_from_callback_propagates(self):
+        """If main-session refresh raises AulaCredentialError, propagate for reauth."""
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        def callback():
+            raise AulaCredentialError("refresh token expired")
+        self.client.set_token_refresh_callback(callback)
+
+        with patch.object(self.client._session, "get", return_value=_make_response(401, text="expired")):
+            with self.assertRaises(AulaCredentialError):
+                self.client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
+
+
+# ---------------------------------------------------------------------------
+# End-to-end widget recovery cycle (integration-level)
+# ---------------------------------------------------------------------------
+
+class TestWidgetRecoveryCycle(unittest.TestCase):
+    """End-to-end recovery: widget 401 → force-refresh fails → cache cleared → next poll succeeds.
+
+    Protects the multi-step recovery chain against future refactors. If any link
+    breaks (e.g. AulaApiError swallowed inside a widget method, stale token not
+    cleared on force-refresh failure, _get_token fails to re-fetch on empty cache),
+    this test fails — which matches the exact user-reported symptom from issue #2.
+    """
+
+    def _make_client_with_widget(self):
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaLoginData, AulaWidget
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+        client._login_result = AulaLoginData(
+            api_version=19,
+            profiles=[],
+            widgets=[AulaWidget(id=1, name="Meebook", widget_id=AulaWidgetId.WEEKPLAN_PARENTS)],
+        )
+        return client
+
+    def _make_child(self):
+        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaChildProfile
+        return AulaChildProfile(
+            first_name="Test",
+            id=1,
+            institution_code="INST01",
+            institution_profile=Mock(),
+            main_group=Mock(),
+            name="Test Child",
+            profile_id=10,
+            short_name="T",
+            user_id="42",
+        )
+
+    def test_full_recovery_cycle_through_get_weekly_plans(self):
+        """Poll 1 fails with server-side cascade; Poll 2 succeeds on a clean cache."""
+        from custom_components.aula.aula_proxy.aula_errors import AulaApiError
+        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaToken
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        from datetime import datetime, timedelta
+        import pytz
+
+        client = self._make_client_with_widget()
+        child = self._make_child()
+        widgetid = AulaWidgetId.WEEKPLAN_PARENTS
+
+        # Seed a cached token that the widget will reject (simulates pre-existing state)
+        cached = AulaToken(
+            bearer_token="Bearer cached",
+            timestamp=datetime.now(pytz.utc) - timedelta(minutes=10),
+            expires_at=datetime.now(pytz.utc) + timedelta(minutes=30),  # JWT still valid locally
+        )
+        client._tokens[widgetid] = cached
+
+        # Dates within a single week → one loop iteration
+        from_dt = datetime(2026, 4, 1, 12, 0, tzinfo=pytz.utc)
+        to_dt = datetime(2026, 4, 3, 12, 0, tzinfo=pytz.utc)
+
+        # Phase 1: widget rejects token → getAulaToken also fails → cascade
+        def phase1_response(url, *args, **kwargs):
+            if "aulaToken.getAulaToken" in url:
+                return _make_response(500, text="Aula token endpoint down")
+            return _make_response(401, text='{"message":"JWT-Token expired, please renew."}')
+
+        with patch.object(client._session, "get", side_effect=phase1_response):
+            with self.assertRaises(AulaApiError) as ctx:
+                client.get_weekly_plans([child], from_dt, to_dt)
+
+        # The error message must be diagnostic enough to pinpoint the cause next time
+        err_msg = str(ctx.exception)
+        self.assertIn("0004", err_msg, "widget id must be in the error")
+        self.assertIn("500", err_msg, "HTTP status must be in the error")
+        self.assertIn("aulaToken.getAulaToken", err_msg,
+                      "failing endpoint must be identified in the error")
+
+        # Critical invariant: stale cache MUST be cleared so next poll can recover
+        self.assertNotIn(widgetid, client._tokens,
+                         "stale token must be evicted on force-refresh failure")
+
+        # Phase 2: simulate next poll — Aula endpoint recovered, widget returns data
+        fresh_jwt = _make_jwt(int(time.time()) + 3600)
+        def phase2_response(url, *args, **kwargs):
+            if "aulaToken.getAulaToken" in url:
+                return _make_response(200, {"data": fresh_jwt})
+            return _make_response(200, [])  # empty weekly plans list — no fixture needed
+
+        with patch.object(client._session, "get", side_effect=phase2_response):
+            plans = client.get_weekly_plans([child], from_dt, to_dt)
+
+        # Cache is repopulated with the fresh token (with decoded JWT exp)
+        self.assertIn(widgetid, client._tokens)
+        stored = client._tokens[widgetid]
+        self.assertEqual(stored.bearer_token, f"Bearer {fresh_jwt}")
+        self.assertIsNotNone(stored.expires_at,
+                             "fresh token must have a decoded JWT exp")
+        # Widget call succeeded — empty list is valid (no plans for this week)
+        self.assertEqual(plans, [])
 
 
 # ---------------------------------------------------------------------------

@@ -54,6 +54,8 @@ class AulaProfile:
 class AulaToken:
     bearer_token: str
     timestamp: datetime
+    expires_at: Optional[datetime] = None
+    """JWT exp claim decoded as datetime, or None if not parseable."""
 
 @dataclass
 class AulaWidget:
