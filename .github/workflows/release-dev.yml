@@ -23,7 +23,7 @@ jobs:
             exit 1
           fi
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Create zip
         run: |
           cd custom_components/aula
