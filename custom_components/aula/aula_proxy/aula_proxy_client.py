@@ -41,12 +41,14 @@ REQUEST_MAX_ATTEMPTS = 3
 """Maximum number of attempts for requests, when certain errors occurs, such as timeout."""
 REQUEST_TIMEOUT = 30
 """Default timeout in seconds for all HTTP requests."""
-TOKEN_EXPIRATION_TIME = timedelta(minutes=40)
-"""Maximum cache duration for widget tokens when JWT exp claim is unavailable."""
-TOKEN_EXPIRY_BUFFER = timedelta(seconds=60)
-"""Refresh widget tokens this many seconds before their actual JWT exp claim.
-Set to 60s to absorb clock skew between client and server (HA on devices
-without NTP can drift by tens of seconds)."""
+TOKEN_EXPIRATION_TIME = timedelta(minutes=5)
+"""Wall-clock cache duration for widget tokens. Matches coordinator polling
+cadence so each poll typically gets a fresh token. Aula's actual JWT TTL
+is unknown and unreliable — this is the simple cache scaarup/aula uses too."""
+RECOVERY_COOLDOWN = timedelta(minutes=10)
+"""Minimum interval between full recovery attempts. During a persistent Aula
+outage, repeated recoveries only churn the OAuth token endpoint without
+fixing anything. After one failed recovery, wait this long before trying again."""
 
 _ACCESS_TOKEN_PATTERN = re.compile(r'access_token=[^&\s]*')
 
@@ -138,6 +140,7 @@ class AulaProxyClient:
     _username:str = ""
     _session:_TokenSession
     _token_refresh_callback: Callable[[], bool] | None = None
+    _last_recovery_at: datetime | None = None
 
     def __init__(self, access_token: str, username_for_meebook: str = ""):
         self._username = username_for_meebook
@@ -146,6 +149,8 @@ class AulaProxyClient:
         self._tokens = dict()
         # Serialize widget token refreshes so two coordinator threads can't
         # both make HTTP roundtrips for the same widget simultaneously.
+        # Also serializes _full_recovery() to prevent two widgets both doing
+        # session reset + OAuth refresh + login concurrently.
         self._token_refresh_lock = threading.Lock()
 
     def set_token_refresh_callback(self, callback: Callable[[], bool]) -> None:
@@ -173,6 +178,89 @@ class AulaProxyClient:
     def update_token(self, new_token: str) -> None:
         """Update the access token used for API calls."""
         self._session.set_access_token(new_token)
+
+    @staticmethod
+    def _is_widget_token_expired_body(response: Response | None) -> bool:
+        """Detect Aula's 'token expired' signal embedded in a 200 OK body.
+
+        Aula occasionally returns HTTP 200 with body
+        ``{"message": "JWT-Token expired, please renew."}``
+        instead of HTTP 401. Upstream PR #341 detects this body pattern.
+        We must check both the status code AND the body content.
+        """
+        if response is None or response.status_code != HTTPStatus.OK:
+            return False
+        try:
+            body = response.json()
+        except (json.JSONDecodeError, ValueError):
+            return False
+        if not isinstance(body, dict):
+            return False
+        msg = body.get("message")
+        if not isinstance(msg, str):
+            return False
+        return "expired" in msg.lower()
+
+    def _full_recovery(self, widgetid: AulaWidgetId) -> AulaToken | None:
+        """Full recovery sequence when a widget endpoint reports the JWT
+        as expired: drop cookies + refresh OAuth access_token + re-warm
+        Aula session + fetch a fresh widget JWT.
+
+        Mirrors upstream scaarup/aula's PR #341 working approach. A simple
+        widget-token refresh is not enough because Aula's server-side
+        session is the actual cache key for the widget JWT — if cookies
+        and access_token aren't BOTH rotated, Aula keeps issuing the same
+        stale widget JWT.
+
+        The OAuth access_token refresh is a silent server-to-server call
+        (NO MitID prompt). The user is unaffected.
+
+        Cooldown: at most one full recovery per RECOVERY_COOLDOWN window
+        to prevent OAuth token churn during a persistent Aula outage.
+        Serialized via _token_refresh_lock for thread safety with other
+        coordinator threads doing concurrent widget calls.
+        """
+        with self._token_refresh_lock:
+            now = datetime.now(pytz.utc)
+            # Cooldown: skip recovery if we just did one. During a persistent
+            # Aula outage, repeated recovery attempts only spin the OAuth token
+            # endpoint without changing the result. Serve whatever cached token
+            # we have (or None) and let the widget call fail honestly.
+            if self._last_recovery_at is not None and (now - self._last_recovery_at) < RECOVERY_COOLDOWN:
+                age = (now - self._last_recovery_at).total_seconds()
+                _LOGGER.warning(
+                    "Skipping full recovery for widget %s — last recovery was %.0fs ago "
+                    "(cooldown %ss). Aula's bug appears persistent; serving cached token.",
+                    widgetid, age, RECOVERY_COOLDOWN.total_seconds(),
+                )
+                return self._tokens.get(widgetid)
+            self._last_recovery_at = now
+
+            _LOGGER.info("Triggering full recovery for widget %s (cookies + access_token + session)", widgetid)
+            # Step 1: drop cookies (preserves access_token in new session)
+            self.reset_session()
+            # Step 2: refresh OAuth access_token via callback (also calls update_token
+            # on the new proxy session). Lets AulaCredentialError propagate so
+            # genuine credential failures still trigger HA reauth.
+            if self._token_refresh_callback is not None:
+                if not self._token_refresh_callback():
+                    _LOGGER.warning(
+                        "OAuth access_token refresh returned False during widget recovery — "
+                        "continuing anyway with the existing token",
+                    )
+            # Step 3: re-warm Aula session (getProfilesByLogin sets fresh cookies
+            # AND, since reset_session cleared _login_result, full bootstrap
+            # including getProfileContext + getProfileMasterData).
+            try:
+                self.login()
+            except Exception as login_err:
+                _LOGGER.warning("login() after session reset failed during widget recovery: %s", login_err)
+                # Continue — getAulaToken might still work if cookies were partially set
+            # Step 4: fetch a fresh widget JWT against the brand-new session.
+            # We pass through _refresh_token (which would normally take the lock)
+            # but we already hold _token_refresh_lock. Use _refresh_token_locked
+            # directly to avoid deadlock.
+            return self._refresh_token_locked(widgetid, force=True)
 
     def reset_session(self) -> None:
         """Discard the HTTP session and start fresh.
@@ -202,9 +290,15 @@ class AulaProxyClient:
             self._session.set_access_token(current_token)
         # Mark logged-in as False so any next login() call re-warms the session
         self._is_logged_in = False
+        # Clear cached login result so next login() does FULL bootstrap
+        # (getProfilesByLogin + getProfileContext + getProfileMasterData),
+        # not just the quick-check shortcut. Without this, login() would early-
+        # return and skip getProfileContext, leaving the new session in a
+        # partial-bootstrap state that other API endpoints reject with 403.
+        self._login_result = None
         # Drop all cached widget tokens — they were minted against the old session
         self._tokens.clear()
-        _LOGGER.info("HTTP session reset (cookies dropped, widget cache cleared)")
+        _LOGGER.info("HTTP session reset (cookies dropped, widget cache cleared, login state reset)")
 
     def close(self) -> None:
         """Close the HTTP session."""
@@ -661,20 +755,28 @@ class AulaProxyClient:
                     continue
                 if not self._should_retry_request(response, attempt):
                     break
-            # On 401, force-refresh token once and retry this request
-            if response is not None and response.status_code == HTTPStatus.UNAUTHORIZED and not has_force_refreshed:
+            # On 401 OR HTTP 200 + {"message":"...expired..."} body, do FULL
+            # recovery (cookies + access_token + session). Upstream Aula
+            # sometimes returns the expiry signal as 401, sometimes as 200
+            # with the message in the body — we must detect both.
+            token_rejected = response is not None and (
+                response.status_code == HTTPStatus.UNAUTHORIZED
+                or self._is_widget_token_expired_body(response)
+            )
+            if token_rejected and not has_force_refreshed:
                 _LOGGER.warning(
-                    "Meebook rejected widget %s token, force-refreshing. Rejected %s. Response body: %s",
-                    widgetid, _describe_token(token), response.text[:200],
+                    "Meebook rejected widget %s token (HTTP %s). Triggering full recovery "
+                    "(cookies + OAuth + re-warm). Rejected %s. Response body: %s",
+                    widgetid, response.status_code, _describe_token(token), response.text[:200],
                 )
-                token = self._refresh_token(widgetid, force=True)
-                _LOGGER.info("After force-refresh: %s", _describe_token(token))
-                headers = self._get_meebook_header(token)
                 has_force_refreshed = True
                 try:
+                    token = self._full_recovery(widgetid)
+                    _LOGGER.info("After full recovery: %s", _describe_token(token))
+                    headers = self._get_meebook_header(token)
                     response = self._session.get(requesturl.format(weekno=weekno), headers=headers, verify=True)
                 except (RequestsTimeout, RequestsConnectionError) as e:
-                    _LOGGER.warning("Meebook retry after token refresh failed with network error: %s", e)
+                    _LOGGER.warning("Meebook retry after full recovery failed with network error: %s", e)
                     response = None
             if response == None or response.status_code != HTTPStatus.OK:
                 if response is not None:
@@ -685,9 +787,9 @@ class AulaProxyClient:
                     # Widget token failure — don't trigger main session reauth
                     if response.status_code == HTTPStatus.UNAUTHORIZED:
                         raise AulaApiError(
-                            f"Meebook widget {widgetid} returned HTTP 401 even after force-refresh "
+                            f"Meebook widget {widgetid} returned HTTP 401 even after full recovery "
                             f"({_describe_token(token)}). Response: {response.text[:200]}. "
-                            f"This usually means Aula's aulaToken endpoint is issuing tokens that Meebook rejects."
+                            f"This is a confirmed Aula server-side issue."
                         )
                     self._raise_error(response)
                 return []
@@ -758,20 +860,25 @@ class AulaProxyClient:
                             continue
                         if not self._should_retry_request(response, attempt):
                             break
-                    # On 401, force-refresh token once and retry this request
-                    if response is not None and response.status_code == HTTPStatus.UNAUTHORIZED and not has_force_refreshed:
+                    # On 401 OR 200 + 'expired' body, do FULL recovery
+                    token_rejected = response is not None and (
+                        response.status_code == HTTPStatus.UNAUTHORIZED
+                        or self._is_widget_token_expired_body(response)
+                    )
+                    if token_rejected and not has_force_refreshed:
                         _LOGGER.warning(
-                            "EasyIQ rejected widget %s token, force-refreshing. Rejected %s. Response body: %s",
-                            widgetid, _describe_token(token), response.text[:200],
+                            "EasyIQ rejected widget %s token (HTTP %s). Triggering full recovery "
+                            "(cookies + OAuth + re-warm). Rejected %s. Response body: %s",
+                            widgetid, response.status_code, _describe_token(token), response.text[:200],
                         )
-                        token = self._refresh_token(widgetid, force=True)
-                        _LOGGER.info("After force-refresh: %s", _describe_token(token))
                         has_force_refreshed = True
-                        headers = self._get_easyiq_header(token, inst_code, csrf_token)
                         try:
+                            token = self._full_recovery(widgetid)
+                            _LOGGER.info("After full recovery: %s", _describe_token(token))
+                            headers = self._get_easyiq_header(token, inst_code, csrf_token)
                             response = self._session.post(EASYIQ_API + "/weekplaninfo", json=post_data, headers=headers, verify=True)
                         except (RequestsTimeout, RequestsConnectionError) as e:
-                            _LOGGER.warning("EasyIQ retry after token refresh failed with network error: %s", e)
+                            _LOGGER.warning("EasyIQ retry after full recovery failed with network error: %s", e)
                             response = None
                     if response == None or response.status_code != HTTPStatus.OK:
                         if response is not None:
@@ -780,9 +887,9 @@ class AulaProxyClient:
                                 # Widget token failure — don't trigger main session reauth
                                 if response.status_code == HTTPStatus.UNAUTHORIZED:
                                     raise AulaApiError(
-                                        f"EasyIQ widget {widgetid} returned HTTP 401 even after force-refresh "
+                                        f"EasyIQ widget {widgetid} returned HTTP 401 even after full recovery "
                                         f"({_describe_token(token)}). Response: {response.text[:200]}. "
-                                        f"This usually means Aula's aulaToken endpoint is issuing tokens that EasyIQ rejects."
+                                        f"This is a confirmed Aula server-side issue."
                                     )
                                 self._raise_error(response)
                             continue
@@ -825,20 +932,25 @@ class AulaProxyClient:
                     continue
                 if not self._should_retry_request(response, attempt):
                     break
-            # On 401, force-refresh token once and retry this request
-            if response is not None and response.status_code == HTTPStatus.UNAUTHORIZED and not has_force_refreshed:
+            # On 401 OR 200 + 'expired' body, do FULL recovery
+            token_rejected = response is not None and (
+                response.status_code == HTTPStatus.UNAUTHORIZED
+                or self._is_widget_token_expired_body(response)
+            )
+            if token_rejected and not has_force_refreshed:
                 _LOGGER.warning(
-                    "MinUddannelse rejected widget %s token, force-refreshing. Rejected %s. Response body: %s",
-                    widgetid, _describe_token(token), response.text[:200],
+                    "MinUddannelse rejected widget %s token (HTTP %s). Triggering full recovery "
+                    "(cookies + OAuth + re-warm). Rejected %s. Response body: %s",
+                    widgetid, response.status_code, _describe_token(token), response.text[:200],
                 )
-                token = self._refresh_token(widgetid, force=True)
-                _LOGGER.info("After force-refresh: %s", _describe_token(token))
-                headers = self._get_myeducation_header(token)
                 has_force_refreshed = True
                 try:
+                    token = self._full_recovery(widgetid)
+                    _LOGGER.info("After full recovery: %s", _describe_token(token))
+                    headers = self._get_myeducation_header(token)
                     response = self._session.get(requesturl.format(weekno=weekno), headers=headers, verify=True)
                 except (RequestsTimeout, RequestsConnectionError) as e:
-                    _LOGGER.warning("MinUddannelse retry after token refresh failed with network error: %s", e)
+                    _LOGGER.warning("MinUddannelse retry after full recovery failed with network error: %s", e)
                     response = None
             if response == None or response.status_code != HTTPStatus.OK:
                 if response is not None:
@@ -847,9 +959,9 @@ class AulaProxyClient:
                         # Widget token failure — don't trigger main session reauth
                         if response.status_code == HTTPStatus.UNAUTHORIZED:
                             raise AulaApiError(
-                                f"MinUddannelse widget {widgetid} returned HTTP 401 even after force-refresh "
+                                f"MinUddannelse widget {widgetid} returned HTTP 401 even after full recovery "
                                 f"({_describe_token(token)}). Response: {response.text[:200]}. "
-                                f"This usually means Aula's aulaToken endpoint is issuing tokens that MinUddannelse rejects."
+                                f"This is a confirmed Aula server-side issue."
                             )
                         self._raise_error(response)
                 from_datetime += timedelta(weeks=1)
@@ -935,7 +1047,14 @@ class AulaProxyClient:
             return self._refresh_token_locked(widgetid, force)
 
     def _refresh_token_locked(self, widgetid:AulaWidgetId, force: bool = False) -> AulaToken | None:
-        """Fetch a fresh widget JWT, with proactive recovery from Aula's stale-cache bug.
+        """Fetch a fresh widget JWT.
+
+        Matches upstream scaarup/aula's simple behavior: fetch, cache, return.
+        We do NOT validate the JWT's exp claim — Aula sometimes issues JWTs
+        with exp earlier than iat (negative TTL), but the widget endpoint
+        is the actual authority on whether the token is acceptable. Trying
+        to second-guess Aula's exp caused regressions (session reset broke
+        unrelated endpoints).
 
         Behavior contract by mode and outcome:
 
@@ -944,34 +1063,16 @@ class AulaProxyClient:
         | HTTP non-200 from token endpoint     | evict + raise AulaApiError | log + return old token |
         | HTTP 200 + non-string `data`         | evict + raise AulaApiError | log + return old token |
         | HTTP 200 + valid JWT                 | cache + return         | cache + return         |
-        | HTTP 200 + already-expired JWT       | trigger reset+retry recovery (see below) | same |
         | Network error / JSONDecodeError      | evict + raise AulaApiError | log + return old token |
-
-        The "force returns nothing usable" rule exists to prevent silent retries
-        with stale tokens that would loop the caller into reporting "HTTP 401
-        after token refresh" when no actual refresh happened.
-
-        Stale-at-issuance recovery (proactive, runs in BOTH force modes):
-        Aula caches widget JWTs server-side keyed by HTTP session cookies.
-        When the JWT we receive is already expired, we drop the cookie jar via
-        reset_session(), warm a fresh server session via getProfilesByLogin,
-        and retry getAulaToken once. If that retry succeeds we cache+return it;
-        if it STILL returns expired, force=True raises AulaApiError and
-        force=False evicts the cache and returns None.
         """
         token = self._tokens.get(widgetid)
         current_time = datetime.now(pytz.utc)
         # Double-checked locking guard: if another thread acquired the lock
         # before us and refreshed within the last 5 minutes, reuse its result
         # rather than making a redundant HTTP roundtrip.
-        # 5 minutes is the dedup window — actual cache TTL is enforced by
-        # _get_token using the JWT's own exp claim (or TOKEN_EXPIRATION_TIME
-        # as fallback), NOT by this 5-minute value.
         if not force and token is not None and current_time - token.timestamp < timedelta(minutes=5):
-            jwt_still_valid = token.expires_at is None or current_time < token.expires_at - TOKEN_EXPIRY_BUFFER
-            if jwt_still_valid:
-                _LOGGER.debug("Ignoring token refresh request to avoid refreshing too often for widget id: " + widgetid)
-                return token
+            _LOGGER.debug("Ignoring token refresh request to avoid refreshing too often for widget id: " + widgetid)
+            return token
 
         url = f"{self._apiurl}?method=aulaToken.getAulaToken&widgetId={widgetid}"
         try:
@@ -1021,127 +1122,27 @@ class AulaProxyClient:
                 expires_at = _decode_jwt_exp(data),
             )
             self._tokens[widgetid] = token
-            now = datetime.now(pytz.utc)
-            if token.expires_at is not None and token.expires_at <= now:
-                # Aula's server-side bug: returned a JWT whose exp claim is
-                # already in the past. Empirically, this happens because Aula
-                # caches widget JWTs server-side keyed by HTTP session cookies
-                # (Csrfp-Token, PHPSESSID, etc.) — NOT by access_token. When
-                # the server-side session ages out, Aula keeps returning the
-                # SAME stale cached JWT no matter how many times we re-call
-                # getAulaToken with the same cookies (and even after
-                # access_token rotation, since cookies are unchanged).
-                #
-                # The only client-side recovery is to drop the cookie jar
-                # and force Aula to mint a fresh server-side session by
-                # calling profiles.getProfilesByLogin first.
-                cookie_summary = sorted(self._session.cookies.keys())
-                _LOGGER.warning(
-                    "Aula returned ALREADY-EXPIRED widget JWT for %s (exp: %s, now: %s, age: %ss, force=%s). "
-                    "Proactively resetting HTTP session and retrying — does NOT wait for downstream "
-                    "widget endpoint to reject this token first. Cookies before reset: %s. Full response: %s",
-                    widgetid, token.expires_at.isoformat(), now.isoformat(),
-                    (now - token.expires_at).total_seconds(), force,
-                    cookie_summary, str(responsedata)[:500],
-                )
-                # Proactive recovery — runs in BOTH force=True and force=False paths.
-                # Detecting expired-at-issuance ANY time we receive a JWT means we never
-                # cache or hand out a known-bad token to a downstream widget call.
-                try:
-                    # Step 1: drop cookie jar and clear all widget caches
-                    self.reset_session()
-                    # Step 2: warm the new session by calling
-                    # profiles.getProfilesByLogin — this is what causes
-                    # Aula's gateway to allocate a fresh server session
-                    # bound to the new cookies.
-                    try:
-                        warm = self._session.get(
-                            f"{self._apiurl}?method=profiles.getProfilesByLogin",
-                            verify=True,
-                        )
-                        _LOGGER.debug(
-                            "Session warmup after reset: HTTP %s, new cookies: %s",
-                            warm.status_code, sorted(self._session.cookies.keys()),
-                        )
-                    except (RequestsTimeout, RequestsConnectionError) as warm_err:
-                        _LOGGER.warning(
-                            "Session warmup after reset failed for widget %s: %s. "
-                            "Trying widget token fetch anyway.",
-                            widgetid, warm_err,
-                        )
-                    # Step 3: retry getAulaToken with fresh cookie jar
-                    retry_response = self._session.get(url, verify=True)
-                    if retry_response.status_code == HTTPStatus.OK:
-                        retry_data = retry_response.json().get("data")
-                        if isinstance(retry_data, str):
-                            retry_token = AulaToken(
-                                bearer_token = "Bearer " + retry_data,
-                                timestamp = datetime.now(pytz.utc),
-                                expires_at = _decode_jwt_exp(retry_data),
-                            )
-                            retry_now = datetime.now(pytz.utc)
-                            retry_valid = (retry_token.expires_at is None
-                                           or retry_token.expires_at > retry_now)
-                            if retry_valid:
-                                _LOGGER.info(
-                                    "Widget %s token recovered after session reset (TTL: %ss)",
-                                    widgetid,
-                                    (retry_token.expires_at - retry_now).total_seconds() if retry_token.expires_at else "undecoded",
-                                )
-                                self._tokens[widgetid] = retry_token
-                                return retry_token
-                            _LOGGER.error(
-                                "Widget %s STILL ALREADY-EXPIRED after session reset "
-                                "(new exp: %s, now: %s, age: %ss). This is a confirmed "
-                                "Aula server-side bug with no client-side workaround.",
-                                widgetid,
-                                retry_token.expires_at.isoformat() if retry_token.expires_at else "undecoded",
-                                retry_now.isoformat(),
-                                (retry_now - retry_token.expires_at).total_seconds() if retry_token.expires_at else "n/a",
-                            )
-                        else:
-                            _LOGGER.error(
-                                "Widget %s retry after session reset returned non-string "
-                                "data (type=%s, value=%s)",
-                                widgetid, type(retry_data).__name__, str(retry_data)[:200],
-                            )
-                    else:
-                        _LOGGER.error(
-                            "Widget %s retry after session reset returned HTTP %s %s. Body: %s",
-                            widgetid, retry_response.status_code, retry_response.reason,
-                            retry_response.text[:200],
-                        )
-                except (RequestsTimeout, RequestsConnectionError) as retry_err:
+            # Diagnostic logging only — we do NOT act on Aula's exp claim.
+            # The widget endpoint (Meebook/EasyIQ/MinUddannelse) is the
+            # authority on whether the token is acceptable. Aula occasionally
+            # returns JWTs with negative TTL (exp earlier than iat); attempting
+            # to detect and recover from this server-side cost us regressions
+            # in v0.2.6 (broke unrelated endpoints via session reset).
+            if token.expires_at is not None:
+                now = datetime.now(pytz.utc)
+                ttl = (token.expires_at - now).total_seconds()
+                if ttl <= 0:
                     _LOGGER.warning(
-                        "Widget %s retry after session reset failed with network error: %s",
-                        widgetid, retry_err,
+                        "Aula returned widget %s JWT with non-positive TTL (exp: %s, now: %s, age: %.0fs). "
+                        "Widget call will likely fail. This is a known Aula server-side issue — "
+                        "the integration cannot work around it.",
+                        widgetid, token.expires_at.isoformat(), now.isoformat(), -ttl,
                     )
-                # We tried our best; flag loudly that this is server-side.
-                # In force=True mode, raise so caller knows refresh failed.
-                # In force=False mode, evict the bad token and return None
-                # so the caller can decide what to do (typically: skip widget call).
-                _LOGGER.error(
-                    "Aula issued an ALREADY-EXPIRED widget JWT for %s (exp: %s, now: %s, age: %ss). "
-                    "This is an Aula server-side bug — the widget endpoint will reject this token. "
-                    "If this persists, please report to the integration maintainers.",
-                    widgetid, token.expires_at.isoformat(), now.isoformat(),
-                    (now - token.expires_at).total_seconds(),
-                )
-                # Evict the bad token from cache so we don't keep handing it out
-                self._tokens.pop(widgetid, None)
-                if force:
-                    raise AulaApiError(
-                        f"Widget {widgetid}: Aula returned an already-expired JWT even after "
-                        f"session reset (exp: {token.expires_at.isoformat()}, age: "
-                        f"{(now - token.expires_at).total_seconds():.0f}s). Aula server-side bug."
+                else:
+                    _LOGGER.debug(
+                        "Widget %s token refreshed, JWT exp: %s (TTL: %.0fs)",
+                        widgetid, token.expires_at.isoformat(), ttl,
                     )
-                return None
-            elif token.expires_at is not None:
-                _LOGGER.debug(
-                    "Widget %s token refreshed, JWT exp: %s (TTL: %ss)",
-                    widgetid, token.expires_at.isoformat(),
-                    (token.expires_at - now).total_seconds(),
-                )
             return token
         except (RequestsTimeout, RequestsConnectionError, ConnectionError, json.JSONDecodeError, KeyError) as e:
             # ConnectionError is raised by _retry_on_401 on transient main-session refresh failure.
@@ -1157,27 +1158,22 @@ class AulaProxyClient:
             return token
 
     def _get_token(self, widgetid:AulaWidgetId) -> AulaToken | None:
-        """Return a cached widget token if still valid, else refresh.
+        """Return a cached widget token if still within wall-clock cache window,
+        else refresh.
 
-        Uses the JWT's actual exp claim (with a small safety buffer) when
-        available — this prevents serving tokens that the server considers
-        expired even if our wall-clock cache window has not elapsed.
-        Falls back to TOKEN_EXPIRATION_TIME when the JWT cannot be decoded.
+        Uses ONLY the wall-clock cache (not JWT exp) to match upstream
+        scaarup/aula behavior. Aula occasionally returns JWTs with broken
+        exp claims (negative TTL) — we let the widget endpoint be the
+        authority on token validity rather than rejecting tokens client-side.
+
+        Use dict.get() instead of `in` + [] to avoid a KeyError race when
+        another thread mutates self._tokens between the check and the access.
         """
         _LOGGER.debug(f"Requesting new token for widget {widgetid}")
-        # Use dict.get() instead of `in` + [] to avoid a KeyError race when
-        # another thread runs reset_session() between the check and the access.
-        # _refresh_token_locked already uses the same pattern.
         token = self._tokens.get(widgetid)
         if token is not None:
             current_time = datetime.now(pytz.utc)
-            if token.expires_at is not None:
-                # Trust the JWT's own exp claim — refresh slightly before it
-                if current_time < token.expires_at - TOKEN_EXPIRY_BUFFER:
-                    _LOGGER.debug("Reusing existing token for widget %s (exp: %s)", widgetid, token.expires_at.isoformat())
-                    return token
-            elif current_time - token.timestamp < TOKEN_EXPIRATION_TIME:
-                # JWT exp not parseable — fall back to fixed cache window
+            if current_time - token.timestamp < TOKEN_EXPIRATION_TIME:
                 _LOGGER.debug("Reusing existing token for widget " + widgetid)
                 return token
         return self._refresh_token(widgetid)
