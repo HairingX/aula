@@ -934,13 +934,18 @@ class TestWidgetRecoveryCycle(unittest.TestCase):
         from_dt = datetime(2026, 4, 1, 12, 0, tzinfo=pytz.utc)
         to_dt = datetime(2026, 4, 3, 12, 0, tzinfo=pytz.utc)
 
-        # Phase 1: widget rejects token → getAulaToken also fails → cascade
-        def phase1_response(url, *args, **kwargs):
+        # Phase 1: widget rejects token → getAulaToken also fails → cascade.
+        # Patch on the _TokenSession CLASS (not instance) so the mock survives
+        # reset_session() inside _full_recovery (which creates a new instance).
+        def phase1_response(self_or_url, *args, **kwargs):
+            # When called as bound method, first arg is self; URL is in args[0] or kwargs
+            url = self_or_url if isinstance(self_or_url, str) else (args[0] if args else kwargs.get("url", ""))
             if "aulaToken.getAulaToken" in url:
                 return _make_response(500, text="Aula token endpoint down")
             return _make_response(401, text='{"message":"JWT-Token expired, please renew."}')
 
-        with patch.object(client._session, "get", side_effect=phase1_response):
+        with patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
+                   side_effect=phase1_response, autospec=True):
             with self.assertRaises(AulaApiError) as ctx:
                 client.get_weekly_plans([child], from_dt, to_dt)
 
@@ -967,12 +972,14 @@ class TestWidgetRecoveryCycle(unittest.TestCase):
         client._is_logged_in = True
 
         fresh_jwt = _make_jwt(int(time.time()) + 3600)
-        def phase2_response(url, *args, **kwargs):
+        def phase2_response(self_or_url, *args, **kwargs):
+            url = self_or_url if isinstance(self_or_url, str) else (args[0] if args else kwargs.get("url", ""))
             if "aulaToken.getAulaToken" in url:
                 return _make_response(200, {"data": fresh_jwt})
             return _make_response(200, [])  # empty weekly plans list — no fixture needed
 
-        with patch.object(client._session, "get", side_effect=phase2_response):
+        with patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
+                   side_effect=phase2_response, autospec=True):
             plans = client.get_weekly_plans([child], from_dt, to_dt)
 
         # Cache is repopulated with the fresh token (with decoded JWT exp)
