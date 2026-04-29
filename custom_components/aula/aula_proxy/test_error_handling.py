@@ -355,73 +355,6 @@ class TestJwtExpDecoding(unittest.TestCase):
         self.assertIsNone(_decode_jwt_exp(_make_jwt(-1)))
         self.assertIsNone(_decode_jwt_exp(_make_jwt(0)))
 
-    def test_already_expired_jwt_triggers_session_reset_retry(self):
-        """When force-refresh returns an expired JWT, reset session + warmup + retry once.
-
-        This tests the actual fix for the user-reported issue: Aula caches widget JWTs
-        server-side keyed by HTTP session cookies. Resetting the session forces Aula
-        to mint a brand-new server session with a fresh widget JWT.
-        """
-        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
-        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
-
-        client = AulaProxyClient("test-token")
-        client._apiurl = "https://example.com/api/v1"
-
-        # First call returns already-expired JWT (Aula's stale cache)
-        # Second call (warmup) returns OK
-        # Third call (retry getAulaToken with fresh cookies) returns fresh JWT
-        expired_jwt = _make_jwt(int(time.time()) - 1000)
-        fresh_jwt = _make_jwt(int(time.time()) + 3600)
-        responses = [
-            _make_response(200, {"data": expired_jwt}),         # initial
-            _make_response(200, {"status": {"message": "OK"}}), # warmup
-            _make_response(200, {"data": fresh_jwt}),           # retry
-        ]
-        # Patch get on the proxy class so it follows the session swap inside reset_session
-        with patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
-                   side_effect=responses) as mock_get:
-            token = client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-
-        # The fresh token from the retry must be returned and cached
-        self.assertIsNotNone(token)
-        self.assertEqual(token.bearer_token, f"Bearer {fresh_jwt}")
-        # Verify all 3 HTTP calls happened: initial + warmup + retry
-        self.assertEqual(mock_get.call_count, 3)
-
-    def test_still_expired_after_session_reset_logs_error(self):
-        """If retry after session reset STILL returns expired JWT, raise + log confirmed Aula bug."""
-        from custom_components.aula.aula_proxy.aula_errors import AulaApiError
-        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
-        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
-
-        client = AulaProxyClient("test-token")
-        client._apiurl = "https://example.com/api/v1"
-
-        expired_jwt = _make_jwt(int(time.time()) - 1000)
-        # Initial returns expired, warmup OK, retry STILL returns expired
-        responses = [
-            _make_response(200, {"data": expired_jwt}),         # initial
-            _make_response(200, {"status": {"message": "OK"}}), # warmup
-            _make_response(200, {"data": expired_jwt}),         # retry — still stale
-        ]
-        with patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
-                   side_effect=responses):
-            with self.assertLogs("custom_components.aula.aula_proxy.aula_proxy_client", level="ERROR") as cm:
-                # In force=True mode, persistent stale must raise AulaApiError
-                with self.assertRaises(AulaApiError):
-                    client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-
-        # Loud ERROR logs must be present so user knows it's confirmed Aula bug
-        self.assertTrue(
-            any("STILL ALREADY-EXPIRED after session reset" in msg for msg in cm.output),
-            f"Expected loud ERROR about persistent expired JWT after reset, got: {cm.output}",
-        )
-        self.assertTrue(
-            any("confirmed Aula server-side bug" in msg for msg in cm.output),
-            f"Expected confirmation message, got: {cm.output}",
-        )
-
     def test_reset_session_preserves_access_token_and_clears_caches(self):
         """reset_session must drop cookies + widget cache but keep the access_token."""
         from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
@@ -455,11 +388,75 @@ class TestJwtExpDecoding(unittest.TestCase):
         # Logged-in flag reset so next login() re-warms
         self.assertFalse(client._is_logged_in)
 
-    def test_proactive_session_reset_on_non_force_path(self):
-        """Even on initial _refresh_token (force=False), reset+retry on stale-at-issuance.
+    def test_get_token_uses_wallclock_cache_only(self):
+        """_get_token uses wall-clock cache only — does NOT validate JWT exp.
 
-        This is the proactive case — we detect Aula's stale JWT BEFORE handing it
-        downstream to Meebook, so the user never sees a Meebook 401.
+        Matches upstream scaarup/aula. Aula occasionally returns JWTs with
+        broken exp (negative TTL); the widget endpoint is the authority on
+        validity, not us. Validating exp client-side caused regressions.
+        """
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaToken
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        from datetime import datetime, timedelta
+        import pytz
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+        # Cached token has exp 1 second in the past, but timestamp is fresh.
+        # Wall-clock cache says "still valid" — we must reuse it.
+        cached = AulaToken(
+            bearer_token="Bearer cached-but-jwt-expired",
+            timestamp=datetime.now(pytz.utc) - timedelta(seconds=10),
+            expires_at=datetime.now(pytz.utc) - timedelta(seconds=1),  # JWT-expired
+        )
+        client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = cached
+
+        with patch.object(client._session, "get") as mock_get:
+            result = client._get_token(AulaWidgetId.WEEKPLAN_PARENTS)
+        # Returns the cached token despite JWT exp being in the past
+        self.assertIs(result, cached)
+        mock_get.assert_not_called()
+
+    def test_full_recovery_cookies_oauth_login_widget_token(self):
+        """_full_recovery resets cookies, refreshes OAuth, calls login(), fetches new widget JWT.
+
+        Mirrors upstream scaarup/aula PR #341 working approach: drop session
+        cookies + force-refresh OAuth access_token + re-warm Aula session +
+        fetch fresh widget JWT against the brand-new server session.
+        """
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+        # Inject some stale cookies that should be dropped by full_recovery
+        client._session.cookies.set("Csrfp-Token", "old")
+        client._session.cookies.set("PHPSESSID", "old")
+
+        # Set up callback that returns True (OAuth refresh succeeded)
+        callback = Mock(return_value=True)
+        client.set_token_refresh_callback(callback)
+
+        # Mock login() to succeed without HTTP
+        fresh_jwt = _make_jwt(int(time.time()) + 3600)
+        with patch.object(AulaProxyClient, "login", return_value=Mock()) as mock_login, \
+             patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
+                   return_value=_make_response(200, {"data": fresh_jwt})):
+            token = client._full_recovery(AulaWidgetId.WEEKPLAN_PARENTS)
+
+        # Verify: callback called (OAuth refresh), login called (re-warm), fresh token returned
+        callback.assert_called_once()
+        mock_login.assert_called_once()
+        self.assertIsNotNone(token)
+        self.assertEqual(token.bearer_token, f"Bearer {fresh_jwt}")
+        # Cookies were dropped by reset_session() inside full_recovery
+        self.assertEqual(len(client._session.cookies), 0)
+
+    def test_full_recovery_propagates_credential_error(self):
+        """If OAuth refresh raises AulaCredentialError, _full_recovery propagates it.
+
+        Genuine credential failure must trigger HA reauth — never swallowed.
         """
         from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
         from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
@@ -467,118 +464,64 @@ class TestJwtExpDecoding(unittest.TestCase):
         client = AulaProxyClient("test-token")
         client._apiurl = "https://example.com/api/v1"
 
-        expired_jwt = _make_jwt(int(time.time()) - 1000)
+        # Callback raises AulaCredentialError (refresh_token expired)
+        callback = Mock(side_effect=AulaCredentialError("refresh token expired"))
+        client.set_token_refresh_callback(callback)
+
+        with self.assertRaises(AulaCredentialError):
+            client._full_recovery(AulaWidgetId.WEEKPLAN_PARENTS)
+
+    def test_full_recovery_continues_when_oauth_refresh_returns_false(self):
+        """OAuth refresh returning False (transient) should not block recovery."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+
+        callback = Mock(return_value=False)  # transient OAuth failure
+        client.set_token_refresh_callback(callback)
+
         fresh_jwt = _make_jwt(int(time.time()) + 3600)
-        responses = [
-            _make_response(200, {"data": expired_jwt}),         # initial — stale
-            _make_response(200, {"status": {"message": "OK"}}), # warmup
-            _make_response(200, {"data": fresh_jwt}),           # retry — fresh
-        ]
-        # Call with force=False (the proactive path — initial cache miss)
-        with patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
-                   side_effect=responses):
-            token = client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=False)
+        with patch.object(AulaProxyClient, "login", return_value=Mock()), \
+             patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
+                   return_value=_make_response(200, {"data": fresh_jwt})):
+            with self.assertLogs("custom_components.aula.aula_proxy.aula_proxy_client", level="WARNING") as cm:
+                token = client._full_recovery(AulaWidgetId.WEEKPLAN_PARENTS)
 
-        # Even without force, the recovery ran and returned the fresh token
         self.assertIsNotNone(token)
-        self.assertEqual(token.bearer_token, f"Bearer {fresh_jwt}")
+        self.assertTrue(any("OAuth access_token refresh returned False" in msg for msg in cm.output))
 
-    def test_non_force_persistent_stale_returns_none(self):
-        """If even after reset+retry the token is stale, non-force returns None (cache evicted)."""
+    def test_is_widget_token_expired_body_detects_expired_message(self):
+        """200 OK + {'message': '...expired...'} body must be detected as expired token."""
         from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
-        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        resp = _make_response(200, {"message": "JWT-Token expired, please renew."})
+        self.assertTrue(AulaProxyClient._is_widget_token_expired_body(resp))
 
-        client = AulaProxyClient("test-token")
-        client._apiurl = "https://example.com/api/v1"
-
-        expired_jwt = _make_jwt(int(time.time()) - 1000)
-        responses = [
-            _make_response(200, {"data": expired_jwt}),         # initial
-            _make_response(200, {"status": {"message": "OK"}}), # warmup
-            _make_response(200, {"data": expired_jwt}),         # retry — STILL stale
-        ]
-        with patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
-                   side_effect=responses):
-            token = client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=False)
-
-        # Non-force returns None and evicts cache (caller can decide what to do)
-        self.assertIsNone(token)
-        self.assertNotIn(AulaWidgetId.WEEKPLAN_PARENTS, client._tokens)
-
-    def test_force_persistent_stale_raises(self):
-        """In force=True, persistent stale must raise so caller propagates the error."""
-        from custom_components.aula.aula_proxy.aula_errors import AulaApiError
+    def test_is_widget_token_expired_body_normal_response_returns_false(self):
+        """200 OK + valid widget data must NOT be detected as expired."""
         from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
-        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        resp = _make_response(200, [{"week": "2026-W01", "data": "valid"}])
+        self.assertFalse(AulaProxyClient._is_widget_token_expired_body(resp))
 
-        client = AulaProxyClient("test-token")
-        client._apiurl = "https://example.com/api/v1"
-
-        expired_jwt = _make_jwt(int(time.time()) - 1000)
-        responses = [
-            _make_response(200, {"data": expired_jwt}),
-            _make_response(200, {"status": {"message": "OK"}}),
-            _make_response(200, {"data": expired_jwt}),  # still stale
-        ]
-        with patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
-                   side_effect=responses):
-            with self.assertRaises(AulaApiError) as ctx:
-                client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-        self.assertIn("already-expired", str(ctx.exception))
-        self.assertIn("session reset", str(ctx.exception))
-
-    def test_session_reset_warmup_failure_still_attempts_retry(self):
-        """If session warmup fails (network), still try the widget refresh — Aula may accept it."""
+    def test_is_widget_token_expired_body_non_200_returns_false(self):
+        """401/500 must NOT be classified as 'expired body' — they're handled separately."""
         from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
-        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        self.assertFalse(AulaProxyClient._is_widget_token_expired_body(_make_response(401, {"message": "expired"})))
+        self.assertFalse(AulaProxyClient._is_widget_token_expired_body(_make_response(500)))
+        self.assertFalse(AulaProxyClient._is_widget_token_expired_body(None))
 
-        client = AulaProxyClient("test-token")
-        client._apiurl = "https://example.com/api/v1"
-
-        expired_jwt = _make_jwt(int(time.time()) - 1000)
-        fresh_jwt = _make_jwt(int(time.time()) + 3600)
-        responses = [
-            _make_response(200, {"data": expired_jwt}),         # initial
-            RequestsTimeout("warmup timeout"),                   # warmup fails
-            _make_response(200, {"data": fresh_jwt}),           # retry succeeds anyway
-        ]
-        with patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
-                   side_effect=responses):
-            token = client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-
-        # Recovery still succeeded despite warmup failure
-        self.assertIsNotNone(token)
-        self.assertEqual(token.bearer_token, f"Bearer {fresh_jwt}")
-
-    def test_already_expired_jwt_logged_as_error(self):
-        """Aula returning a JWT that's already expired must be logged loudly as an Aula server bug."""
-        from custom_components.aula.aula_proxy.aula_errors import AulaApiError
+    def test_is_widget_token_expired_body_handles_malformed_body(self):
+        """Non-JSON or non-dict bodies must not crash."""
         from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
-        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        resp = Mock(spec=Response)
+        resp.status_code = 200
+        resp.json = Mock(side_effect=json.JSONDecodeError("", "", 0))
+        self.assertFalse(AulaProxyClient._is_widget_token_expired_body(resp))
 
-        client = AulaProxyClient("test-token")
-        client._apiurl = "https://example.com/api/v1"
-        # All 3 calls (initial + warmup + retry) return expired tokens
-        expired_jwt = _make_jwt(int(time.time()) - 60)
-        responses = [
-            _make_response(200, {"data": expired_jwt}),
-            _make_response(200, {"status": {"message": "OK"}}),
-            _make_response(200, {"data": expired_jwt}),
-        ]
-
-        with patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
-                   side_effect=responses):
-            with self.assertLogs("custom_components.aula.aula_proxy.aula_proxy_client", level="ERROR") as cm:
-                # Force=True: must raise after recovery fails
-                with self.assertRaises(AulaApiError):
-                    client._refresh_token(AulaWidgetId.WEEKPLAN_PARENTS, force=True)
-        # Errors must be logged loudly enough to identify the cause
-        self.assertTrue(any("ALREADY-EXPIRED" in msg for msg in cm.output))
-        self.assertTrue(any("Aula server-side bug" in msg for msg in cm.output))
-
-    def test_get_token_uses_jwt_exp_for_cache_invalidation(self):
-        """If JWT exp has passed, _get_token must refresh — not return cached."""
-        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+    def test_full_recovery_cooldown_skips_when_recent(self):
+        """Recovery cooldown must prevent OAuth churn during persistent Aula outages."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient, RECOVERY_COOLDOWN
         from custom_components.aula.aula_proxy.models.aula_profile_models import AulaToken
         from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
         from datetime import datetime, timedelta
@@ -586,46 +529,127 @@ class TestJwtExpDecoding(unittest.TestCase):
 
         client = AulaProxyClient("test-token")
         client._apiurl = "https://example.com/api/v1"
-        # Cached token: timestamp is fresh (5s ago) but JWT exp was 1 second ago
-        expired_jwt_exp = datetime.now(pytz.utc) - timedelta(seconds=1)
-        client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = AulaToken(
-            bearer_token="Bearer expired",
-            timestamp=datetime.now(pytz.utc) - timedelta(seconds=5),
-            expires_at=expired_jwt_exp,
-        )
-
-        # _get_token should not return the expired token — it should call _refresh_token
-        new_jwt = _make_jwt(int(time.time()) + 3600)
-        resp = _make_response(200, {"data": new_jwt})
-        with patch.object(client._session, "get", return_value=resp):
-            result = client._get_token(AulaWidgetId.WEEKPLAN_PARENTS)
-        self.assertIsNotNone(result)
-        self.assertEqual(result.bearer_token, f"Bearer {new_jwt}")
-        self.assertIsNotNone(result.expires_at)
-
-    def test_get_token_reuses_cached_token_when_jwt_exp_is_future(self):
-        """If JWT exp is comfortably in the future, _get_token returns cached without HTTP call."""
-        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
-        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaToken
-        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
-        from datetime import datetime, timedelta
-        import pytz
-
-        client = AulaProxyClient("test-token")
-        client._apiurl = "https://example.com/api/v1"
-        # JWT exp is 1 hour in the future — cache should be reused
-        future_exp = datetime.now(pytz.utc) + timedelta(hours=1)
-        cached = AulaToken(
-            bearer_token="Bearer cached",
+        # Simulate recent recovery
+        client._last_recovery_at = datetime.now(pytz.utc) - timedelta(seconds=30)
+        # Seed a stale token
+        stale_token = AulaToken(
+            bearer_token="Bearer stale",
             timestamp=datetime.now(pytz.utc),
-            expires_at=future_exp,
+            expires_at=None,
         )
-        client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = cached
+        client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = stale_token
 
-        with patch.object(client._session, "get") as mock_get:
-            result = client._get_token(AulaWidgetId.WEEKPLAN_PARENTS)
-        self.assertIs(result, cached)
-        mock_get.assert_not_called()
+        callback = Mock(return_value=True)
+        client.set_token_refresh_callback(callback)
+
+        with self.assertLogs("custom_components.aula.aula_proxy.aula_proxy_client", level="WARNING") as cm:
+            result = client._full_recovery(AulaWidgetId.WEEKPLAN_PARENTS)
+
+        # Cooldown skipped recovery — returns the cached token
+        self.assertIs(result, stale_token)
+        # Callback was NOT called (no OAuth churn)
+        callback.assert_not_called()
+        # Loud warning about skipping
+        self.assertTrue(any("Skipping full recovery" in msg for msg in cm.output))
+
+    def test_full_recovery_cooldown_allows_after_window(self):
+        """After cooldown window, recovery proceeds normally."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient, RECOVERY_COOLDOWN
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+        from datetime import datetime, timedelta
+        import pytz
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+        # Last recovery older than cooldown
+        client._last_recovery_at = datetime.now(pytz.utc) - RECOVERY_COOLDOWN - timedelta(seconds=10)
+        client.set_token_refresh_callback(Mock(return_value=True))
+
+        fresh_jwt = _make_jwt(int(time.time()) + 3600)
+        with patch.object(AulaProxyClient, "login", return_value=Mock()), \
+             patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
+                   return_value=_make_response(200, {"data": fresh_jwt})):
+            token = client._full_recovery(AulaWidgetId.WEEKPLAN_PARENTS)
+
+        self.assertIsNotNone(token)
+        # _last_recovery_at was updated to now
+        now = datetime.now(pytz.utc)
+        self.assertLess((now - client._last_recovery_at).total_seconds(), 5)
+
+    def test_reset_session_clears_login_result(self):
+        """reset_session must clear _login_result so next login() does FULL bootstrap."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaLoginData
+
+        client = AulaProxyClient("test-token")
+        client._login_result = AulaLoginData(api_version=19, profiles=[], widgets=[])
+        client._is_logged_in = True
+
+        client.reset_session()
+
+        self.assertIsNone(client._login_result)
+        self.assertFalse(client._is_logged_in)
+
+    def test_full_recovery_concurrent_calls_serialized(self):
+        """Two concurrent _full_recovery calls must serialize via _token_refresh_lock.
+
+        Without locking, both threads would do session reset + OAuth refresh + login
+        in parallel — wasted work and potential race conditions.
+        """
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+        callback_count = 0
+        callback_lock = threading.Lock()
+
+        def slow_callback():
+            nonlocal callback_count
+            with callback_lock:
+                callback_count += 1
+            time.sleep(0.05)
+            return True
+        client.set_token_refresh_callback(slow_callback)
+
+        fresh_jwt = _make_jwt(int(time.time()) + 3600)
+        with patch.object(AulaProxyClient, "login", return_value=Mock()), \
+             patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
+                   return_value=_make_response(200, {"data": fresh_jwt})):
+
+            def run():
+                client._full_recovery(AulaWidgetId.WEEKPLAN_PARENTS)
+
+            t1 = threading.Thread(target=run)
+            t2 = threading.Thread(target=run)
+            t1.start()
+            t2.start()
+            t1.join(timeout=5)
+            t2.join(timeout=5)
+
+        # Second thread sees the cooldown set by the first → only one OAuth call happens
+        self.assertEqual(callback_count, 1)
+
+    def test_full_recovery_continues_when_login_fails(self):
+        """If login() fails after reset, still try to fetch widget JWT."""
+        from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
+        from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
+
+        client = AulaProxyClient("test-token")
+        client._apiurl = "https://example.com/api/v1"
+
+        client.set_token_refresh_callback(Mock(return_value=True))
+
+        fresh_jwt = _make_jwt(int(time.time()) + 3600)
+        with patch.object(AulaProxyClient, "login", side_effect=ConnectionError("network")), \
+             patch("custom_components.aula.aula_proxy.aula_proxy_client._TokenSession.get",
+                   return_value=_make_response(200, {"data": fresh_jwt})):
+            with self.assertLogs("custom_components.aula.aula_proxy.aula_proxy_client", level="WARNING") as cm:
+                token = client._full_recovery(AulaWidgetId.WEEKPLAN_PARENTS)
+
+        # Recovery still produced a token despite login failure
+        self.assertIsNotNone(token)
+        self.assertTrue(any("login() after session reset failed" in msg for msg in cm.output))
 
     def test_get_token_race_with_concurrent_clear_does_not_keyerror(self):
         """_get_token must use dict.get() so it doesn't KeyError if another thread
@@ -720,8 +744,8 @@ class TestJwtExpDecoding(unittest.TestCase):
         # Ideally call_count == 1; allow up to 1 due to the double-check pattern
         self.assertEqual(call_count, 1, "Lock + double-check should serialize to a single HTTP refresh")
 
-    def test_get_token_falls_back_to_timestamp_when_no_jwt_exp(self):
-        """When JWT exp can't be parsed, fall back to TOKEN_EXPIRATION_TIME wall-clock window."""
+    def test_get_token_uses_wallclock_cache_within_window(self):
+        """Cache is used while within TOKEN_EXPIRATION_TIME wall-clock window."""
         from custom_components.aula.aula_proxy.aula_proxy_client import AulaProxyClient
         from custom_components.aula.aula_proxy.models.aula_profile_models import AulaToken
         from custom_components.aula.aula_proxy.models.constants import AulaWidgetId
@@ -730,10 +754,10 @@ class TestJwtExpDecoding(unittest.TestCase):
 
         client = AulaProxyClient("test-token")
         client._apiurl = "https://example.com/api/v1"
-        # No expires_at — fall back to wall-clock cache
+        # 2 min old — well within the 5-min cache window
         cached = AulaToken(
             bearer_token="Bearer cached",
-            timestamp=datetime.now(pytz.utc) - timedelta(minutes=5),  # 5 min old, still within 40min window
+            timestamp=datetime.now(pytz.utc) - timedelta(minutes=2),
             expires_at=None,
         )
         client._tokens[AulaWidgetId.WEEKPLAN_PARENTS] = cached
@@ -931,7 +955,17 @@ class TestWidgetRecoveryCycle(unittest.TestCase):
         self.assertNotIn(widgetid, client._tokens,
                          "stale token must be evicted on force-refresh failure")
 
-        # Phase 2: simulate next poll — Aula endpoint recovered, widget returns data
+        # Phase 2: simulate next poll — Aula endpoint recovered, widget returns data.
+        # Real coordinator polls always call login() first, which re-establishes
+        # _login_result (cleared by phase 1's reset_session).
+        from custom_components.aula.aula_proxy.models.aula_profile_models import AulaLoginData, AulaWidget
+        client._login_result = AulaLoginData(
+            api_version=19,
+            profiles=[],
+            widgets=[AulaWidget(id=1, name="Meebook", widget_id=AulaWidgetId.WEEKPLAN_PARENTS)],
+        )
+        client._is_logged_in = True
+
         fresh_jwt = _make_jwt(int(time.time()) + 3600)
         def phase2_response(url, *args, **kwargs):
             if "aulaToken.getAulaToken" in url:
