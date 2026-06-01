@@ -14,6 +14,7 @@ class AulaNotificationData(TypedDict):
     albumId: NotRequired[int|None]
     endTime: NotRequired[str|None]
     eventId: NotRequired[int|None]
+    folderId: NotRequired[int|None]  # best guess for issue #10; verify against real payload
     isAllDayEvent: NotRequired[bool|None]
     mediaId: NotRequired[int|None]
     mediaIds: NotRequired[List[int]|None]

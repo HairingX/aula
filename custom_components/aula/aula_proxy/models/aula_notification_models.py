@@ -62,6 +62,13 @@ class AulaGalleryNotification(AulaNotificationBase):
 
 @dataclass
 class AulaMessageNotification(AulaNotificationBase):
+    # NOTE (issue #10): best-guess mapping pending real-world verification.
+    # The real Aula folder id is documented as Thread.folderId (int|null) on
+    # message threads; it is NOT confirmed to exist on the notification payload
+    # (the captured notifications response was empty). Sourced from "folderId"
+    # and parsed nullable + crash-safe, so it is None when absent rather than
+    # breaking the whole notification fetch.
+    folder_id: int | None
     institution_code: str
     institution_profile_id: int
     message_text: str

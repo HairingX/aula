@@ -84,6 +84,21 @@ class AulaParser:
         return int(value)
 
     @staticmethod
+    def _parse_nullable_int_safe(value: Any) -> int | None:
+        """Like _parse_nullable_int but never raises on non-numeric input.
+
+        Returns None when the value is missing or cannot be interpreted as an
+        int. Use for fields whose type/presence is not yet confirmed against the
+        real API, so a surprising value cannot crash parsing (see issue #10)."""
+        if value is None: return None
+        if isinstance(value, bool): return None  # bools are ints in Python; reject them
+        if isinstance(value, int): return value
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _parse_str(value: Any) -> str:
         if value is None: return ""
         return str(value)
