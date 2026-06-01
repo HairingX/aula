@@ -60,6 +60,46 @@ Config Flow (Unilogin credentials)
 - **Blocking HTTP in async:** Uses `async_add_executor_job()` to run synchronous HTTP calls from async HA context.
 - **Localization:** `strings.json` with translations in `translations/en.json` and `translations/da.json`.
 
+## Release Process
+
+When the maintainer asks to "release" (or cut/publish a release), follow this exact
+process. It is split across three GitHub Actions workflows in `.github/workflows/`.
+**Two preconditions must both be satisfied before anything can be published: (1) the
+draft release must exist, and (2) the maintainer must have explicitly approved it.**
+
+1. **Draft is produced automatically — wait for it.** `release-drafter.yml` runs on every
+   push to `main` and maintains a single GitHub **draft release** whose notes are
+   auto-generated and categorized from merged PR labels (it also auto-labels PRs). After
+   the relevant changes are merged to `main`, **wait until the Release Drafter workflow run
+   has completed** so the draft reflects them. Never publish before the draft is up to date —
+   the publish step reuses the draft's body as the release notes.
+
+2. **Review and approval — mandatory, maintainer only.** Present the current draft release
+   notes to the maintainer and get **explicit approval** of the content (and the version
+   number) before proceeding. Do NOT publish a release without this approval, even if asked
+   to "just release it" — confirm the draft first.
+
+3. **Publish via the `Release` workflow (`release.yml`).** This is the action responsible for
+   the actual release. It is a manual `workflow_dispatch` taking a `version` input
+   (e.g. `0.2.6` — **without** the `v` prefix; format `X.Y.Z` or `X.Y.Z-suffix`). It then,
+   in order: validates the version, verifies tag `v$VERSION` does not already exist, bumps
+   `custom_components/aula/manifest.json` via `.github/scripts/update_hacs_manifest.py`,
+   commits the bump and pushes to `main`, creates and pushes tag `v$VERSION`, builds
+   `aula.zip` (excluding `test_*`, `__pycache__`, `*.pyc`), **captures the Release Drafter
+   draft's body as the release notes and deletes the draft**, then publishes the GitHub
+   Release for `v$VERSION` with `aula.zip` attached. The maintainer (or, if permitted, the
+   agent) triggers this workflow with the approved version number — do not bump the manifest
+   or create the tag by hand; the workflow owns version bump, tag, zip, and publish.
+
+4. **Dev/pre-releases** use a separate workflow, `release-dev.yml` (`Release dev`): a manual
+   `workflow_dispatch` taking a `tag` input (e.g. `v0.3.0-dev.1`) that builds `aula.zip` and
+   uploads it as a **prerelease** asset. Use this only when a dev/prerelease build is
+   explicitly requested; it does not bump the manifest.
+
+Summary of ownership: Release Drafter (automatic, on push to `main`) owns the draft notes →
+maintainer approves → the `Release` workflow owns version bump, tagging, zipping, and
+publishing. Build + draft must be in place, and approval given, before any release.
+
 ## Agent Workflow (MANDATORY)
 
 **All code changes MUST follow the agent workflow process defined in `docs/AGENT_WORKFLOW.md`.** This process requires every task to pass through 9 stages: Project Management → Design Document → Design Review (multi-team) → Implementation → QA Review → Performance Review → Network & Data Review → HASS Compliance → Final Verification. **NO code may be written until the design document is reviewed and approved by all specialist agent teams (Stage 3).** No stage may be skipped. Read the full process document before starting any task.
