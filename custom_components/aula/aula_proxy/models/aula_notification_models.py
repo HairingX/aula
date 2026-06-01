@@ -62,7 +62,6 @@ class AulaGalleryNotification(AulaNotificationBase):
 
 @dataclass
 class AulaMessageNotification(AulaNotificationBase):
-    folder_id: int
     institution_code: str
     institution_profile_id: int
     message_text: str
