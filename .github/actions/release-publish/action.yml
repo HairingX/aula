@@ -1,0 +1,104 @@
+name: 'Publish release'
+description: 'Bump manifest, tag, build zip, capture draft notes, and publish a GitHub Release.'
+
+inputs:
+  version:
+    description: 'Version to release (X.Y.Z or X.Y.Z-suffix, no v prefix)'
+    required: true
+  github-token:
+    description: 'Token with contents:write to push commits/tags and manage releases'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate version input
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.-]+)?$ ]]; then
+          echo "::error::Version must match X.Y.Z or X.Y.Z-suffix (got: $VERSION)"
+          exit 1
+        fi
+
+    - name: Check out main
+      uses: actions/checkout@v6
+      with:
+        ref: main
+        fetch-depth: 0
+        token: ${{ inputs.github-token }}
+
+    - name: Verify tag does not already exist
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+          echo "::error::Tag v$VERSION already exists. Pick a new version."
+          exit 1
+        fi
+
+    - name: Bump manifest.json version
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        python3 ${{ github.workspace }}/.github/scripts/update_hacs_manifest.py --version "$VERSION" --path /custom_components/aula/
+
+    - name: Commit manifest bump and create tag
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git add ./custom_components/aula/manifest.json
+        if git diff --cached --quiet; then
+          # Manifest already at this version — tag the current HEAD
+          echo "manifest.json already at $VERSION — tagging current HEAD"
+        else
+          git commit -m "Updated manifest.json"
+          git push origin HEAD:main
+        fi
+        # Create tag at the (potentially new) HEAD where manifest is correct
+        git tag "v$VERSION"
+        git push origin "v$VERSION"
+
+    - name: Build release zip
+      shell: bash
+      run: |
+        cd custom_components/aula
+        zip aula.zip -r ./ -x "test_*" -x "__pycache__/*" -x "*.pyc"
+
+    - name: Capture draft release notes and delete draft
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+      run: |
+        # release-drafter maintains a draft release with auto-generated notes.
+        # Capture its body, then delete the draft so it can't conflict with
+        # the new release we're about to create with the same tag name.
+        draft_id=$(gh api "repos/$REPO/releases" --jq '[.[] | select(.draft==true)] | sort_by(.created_at) | reverse | .[0].id // empty')
+        if [[ -n "$draft_id" ]]; then
+          echo "Found existing draft release id=$draft_id"
+          gh api "repos/$REPO/releases/$draft_id" --jq '.body' > /tmp/release-body.md
+          gh api -X DELETE "repos/$REPO/releases/$draft_id"
+          echo "Captured body and deleted draft $draft_id"
+        else
+          echo "No draft release found — release will be published with empty body"
+          echo "" > /tmp/release-body.md
+        fi
+
+    - name: Publish GitHub Release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        gh release create "v$VERSION" \
+          --target main \
+          --title "v$VERSION" \
+          --notes-file /tmp/release-body.md \
+          ./custom_components/aula/aula.zip

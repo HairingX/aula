@@ -1,97 +1,54 @@
 name: Release
 
+# Default release path: resolves the version from the latest draft release
+# maintained by release-drafter.yml. Fails fast if no draft exists or its
+# tag_name is not in the expected format. Use release-manual.yml to override
+# the version explicitly.
+
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g. 0.2.6 — without v prefix)'
-        required: true
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
-    name: Bump manifest, tag, and publish release
+    name: Resolve version from draft and publish
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Validate version input
+      - name: Resolve version from latest draft release
+        id: resolve
         env:
-          VERSION: ${{ github.event.inputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.-]+)?$ ]]; then
-            echo "::error::Version must match X.Y.Z or X.Y.Z-suffix (got: $VERSION)"
+          tag_name=$(gh api "repos/$REPO/releases" \
+            --jq '[.[] | select(.draft==true)] | sort_by(.created_at) | reverse | .[0].tag_name // empty')
+          if [[ -z "$tag_name" ]]; then
+            echo "::error::No draft release found. Wait for the Release Drafter workflow to create a draft, then retry."
             exit 1
           fi
+          if [[ ! "$tag_name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.-]+)?$ ]]; then
+            echo "::error::Draft tag_name has unexpected format: $tag_name (expected vX.Y.Z or vX.Y.Z-suffix)"
+            exit 1
+          fi
+          version="${tag_name#v}"
+          echo "Resolved version from draft: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Check out main
+      - name: Check out repository (so the local composite action is on disk)
         uses: actions/checkout@v6
         with:
           ref: main
-          fetch-depth: 0
 
-      - name: Verify tag does not already exist
-        env:
-          VERSION: ${{ github.event.inputs.version }}
-        run: |
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "::error::Tag v$VERSION already exists. Pick a new version."
-            exit 1
-          fi
-
-      - name: Bump manifest.json version
-        env:
-          VERSION: ${{ github.event.inputs.version }}
-        run: |
-          python3 ${{ github.workspace }}/.github/scripts/update_hacs_manifest.py --version "$VERSION" --path /custom_components/aula/
-
-      - name: Commit manifest bump and create tag
-        env:
-          VERSION: ${{ github.event.inputs.version }}
-        run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add ./custom_components/aula/manifest.json
-          if git diff --cached --quiet; then
-            # Manifest already at this version — tag the current HEAD
-            echo "manifest.json already at $VERSION — tagging current HEAD"
-          else
-            git commit -m "Updated manifest.json"
-            git push origin HEAD:main
-          fi
-          # Create tag at the (potentially new) HEAD where manifest is correct
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
-
-      - name: Build release zip
-        run: |
-          cd custom_components/aula
-          zip aula.zip -r ./ -x "test_*" -x "__pycache__/*" -x "*.pyc"
-
-      - name: Capture draft release notes and delete draft
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # release-drafter maintains a draft release with auto-generated notes.
-          # Capture its body, then delete the draft so it can't conflict with
-          # the new release we're about to create with the same tag name.
-          draft_id=$(gh api repos/${{ github.repository }}/releases --jq '[.[] | select(.draft==true)] | .[0].id // empty')
-          if [[ -n "$draft_id" ]]; then
-            echo "Found existing draft release id=$draft_id"
-            gh api "repos/${{ github.repository }}/releases/$draft_id" --jq '.body' > /tmp/release-body.md
-            gh api -X DELETE "repos/${{ github.repository }}/releases/$draft_id"
-            echo "Captured body and deleted draft $draft_id"
-          else
-            echo "No draft release found — release will be published with empty body"
-            echo "" > /tmp/release-body.md
-          fi
-
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ github.event.inputs.version }}
-        run: |
-          gh release create "v$VERSION" \
-            --target main \
-            --title "v$VERSION" \
-            --notes-file /tmp/release-body.md \
-            ./custom_components/aula/aula.zip
+      - name: Publish release
+        uses: ./.github/actions/release-publish
+        with:
+          version: ${{ steps.resolve.outputs.version }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
