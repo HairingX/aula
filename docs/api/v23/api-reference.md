@@ -69,7 +69,7 @@ Returns the logged-in user's profiles and children.
 |---|---|---|
 | `id` | int | Institution profile ID (instProfileId) |
 | `profileId` | int | Cross-institution profile ID |
-| `institutionCode` | string | e.g. "791006", "G16713" |
+| `institutionCode` | string | numeric (e.g. "791006") or letter-prefixed (e.g. "Gxxxxx") — see issue #10 |
 | `institutionName` | string | |
 | `municipalityCode` | string | e.g. "791" |
 | `municipalityName` | string | e.g. "Viborg" |

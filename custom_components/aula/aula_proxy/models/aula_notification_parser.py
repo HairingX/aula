@@ -2,7 +2,6 @@ from typing import List
 import logging
 
 from ..responses.get_notifications_response import AulaGetNotificationsResponse, AulaNotificationData
-from ..utils.list_utils import list_without_none
 
 from .aula_notification_models import *
 from .aula_parser import AulaParser
@@ -40,7 +39,10 @@ class AulaNotificationParser(AulaParser):
             notification_id=AulaNotificationParser._parse_str(data.get("notificationId")),
             notification_type=AulaNotificationParser._parse_str(data.get("notificationType")),
             triggered=AulaNotificationParser._parse_datetime(data.get("triggered"), fix_timezone=True),
-            folder_id=AulaNotificationParser._parse_int(data.get("institutionCode")),  # intentional: institutionCode is used as the folder key
+            # Best guess for issue #10: the real folder id is "folderId" (int|null,
+            # as on message threads). Unverified on the notification payload, so
+            # parsed crash-safe — None when absent. Verify against a real response.
+            folder_id=AulaNotificationParser._parse_nullable_int_safe(data.get("folderId")),
             institution_code=AulaNotificationParser._parse_str(data.get("institutionCode")),
             institution_profile_id=AulaNotificationParser._parse_int(data.get("institutionProfileId")),
             message_text=AulaNotificationParser._parse_str(data.get("messageText")),
@@ -174,7 +176,18 @@ class AulaNotificationParser(AulaParser):
     @staticmethod
     def parse_notifications(data: List[AulaNotificationData] | None) -> List[AULA_NOTIFICATION_TYPES]:
         if data is None: return []
-        return list_without_none(map(AulaNotificationParser.parse_notification, data))
+        results = list[AULA_NOTIFICATION_TYPES]()
+        for item in data:
+            # Isolate per-notification parsing: a single malformed notification
+            # must not take down the whole fetch (see issue #10).
+            try:
+                notification = AulaNotificationParser.parse_notification(item)
+            except Exception as ex:
+                _LOGGER.warning(f"Failed to parse notification, skipping it: {ex}. Data: {item}")
+                continue
+            if notification is not None:
+                results.append(notification)
+        return results
 
     @staticmethod
     def parse_notification_response(data: AulaGetNotificationsResponse | None) -> List[AULA_NOTIFICATION_TYPES]:
