@@ -63,11 +63,11 @@ Config Flow (Unilogin credentials)
 ## Release Process
 
 When the maintainer asks to "release" (or cut/publish a release), follow this exact
-process. It is split across four GitHub Actions workflows in `.github/workflows/` plus
+process. It is split across three GitHub Actions workflows in `.github/workflows/` plus
 one shared composite action in `.github/actions/release-publish/`. **Two preconditions
 must both be satisfied before anything can be published: (1) the draft release must
-exist (default flow only — see step 3a vs 3b), and (2) the maintainer must have
-explicitly approved it.**
+exist (unless you supply a version override — see step 3), and (2) the maintainer must
+have explicitly approved it.**
 
 **How the release text is authored — never by hand.** The release notes are produced
 entirely by `release-drafter` from merged PR **titles** and **labels**; nobody writes or
@@ -100,35 +100,29 @@ Publishing the draft by hand reintroduces that bug.
    number that release-drafter resolved) before proceeding. Do NOT publish a release
    without this approval, even if asked to "just release it" — confirm the draft first.
 
-3. **Publish.** Pick the right workflow based on whether you accept the draft's resolved
-   version or need to override it:
+3. **Publish — the `Release` workflow (`release.yml`).** A single manual
+   `workflow_dispatch` with **one optional `version` input**:
 
-   **3a. Default path — `Release` workflow (`release.yml`).** Manual
-   `workflow_dispatch` with **no input**. It reads `tag_name` from the newest draft
-   release (`gh api repos/{owner}/{repo}/releases`, filtered to drafts and sorted by
-   `created_at` desc), strips the leading `v`, and uses that as the version. **Fails
-   fast** if no draft exists or the format is unexpected. This is the path you should
-   use most of the time.
+   - **Leave it empty** (the normal path): the workflow reads `tag_name` from the newest
+     draft release (`gh api repos/{owner}/{repo}/releases`, filtered to drafts and sorted
+     by `created_at` desc), strips the leading `v`, and uses that as the version. It
+     **fails fast** if no draft exists or the tag format is unexpected.
+   - **Fill it in** (`X.Y.Z` or `X.Y.Z-suffix`, without the `v` prefix) to **override** the
+     resolved version — e.g. to jump minor without re-labelling already-merged PRs. A
+     supplied version short-circuits before the draft lookup; a draft, if present, is still
+     captured as the notes and deleted.
 
-   **3b. Manual override — `Release (manual version)` workflow (`release-manual.yml`).**
-   Manual `workflow_dispatch` taking a **required `version` input** (e.g. `0.2.6` —
-   without the `v` prefix; format `X.Y.Z` or `X.Y.Z-suffix`). Runs **regardless of draft
-   state**. Use this only when the draft's resolved version is wrong (e.g. you want to
-   jump minor without re-labelling already-merged PRs). If a draft exists, its body is
-   still captured as release notes and the draft is deleted.
-
-   Both 3a and 3b delegate to the shared composite action
+   The workflow then delegates to the shared composite action
    `.github/actions/release-publish/action.yml`, which (in order): validates the version,
    verifies tag `v$VERSION` does not already exist, bumps
    `custom_components/aula/manifest.json` via `.github/scripts/update_hacs_manifest.py`,
    commits the bump and pushes to `main`, creates and pushes tag `v$VERSION`, builds
-   `aula.zip` (excluding `test_*`, `__pycache__`, `*.pyc`), **captures the Release Drafter
-   draft's body as the release notes and deletes the draft (if present)**, then publishes
-   the GitHub Release for `v$VERSION` with `aula.zip` attached. Do not bump the manifest
-   or create the tag by hand; the composite owns version bump, tag, zip, and publish.
-
-   Both workflows declare `concurrency: release` so two simultaneous release runs are
-   serialized rather than racing each other.
+   `aula.zip` (excluding test files, `__pycache__`, `*.pyc`), **captures the Release
+   Drafter draft's body as the release notes and deletes the draft (if present)**, then
+   publishes the GitHub Release for `v$VERSION` with `aula.zip` attached. Do not bump the
+   manifest or create the tag by hand; the composite owns version bump, tag, zip, and
+   publish. The workflow declares `concurrency: release` so two simultaneous runs
+   serialize rather than race.
 
 4. **Dev/pre-releases** use a separate workflow, `release-dev.yml` (`Release dev`): a manual
    `workflow_dispatch` taking a `tag` input (e.g. `v0.3.0-dev.1`) that builds `aula.zip` and
@@ -137,10 +131,10 @@ Publishing the draft by hand reintroduces that bug.
    draft.
 
 Summary of ownership: Release Drafter (automatic, on push to `main`) owns the draft notes
-and the resolved version → maintainer approves → the `Release` workflow (default) or
-`Release (manual version)` workflow (override) dispatches the shared composite, which
-owns version bump, tagging, zipping, and publishing. Build + draft must be in place
-(default path), and approval given, before any release.
+and the resolved version → maintainer approves → the `Release` workflow dispatches the
+shared composite (optionally with a version supplied to its input to override the draft),
+which owns version bump, tagging, zipping, and publishing. Build + draft must be in place
+(unless a version is supplied), and approval given, before any release.
 
 ## Agent Workflow (MANDATORY)
 

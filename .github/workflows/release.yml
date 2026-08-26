@@ -1,12 +1,19 @@
 name: Release
 
-# Default release path: resolves the version from the latest draft release
-# maintained by release-drafter.yml. Fails fast if no draft exists or its
-# tag_name is not in the expected format. Use release-manual.yml to override
-# the version explicitly.
+# Single release entry point.
+# - Leave the "version" input empty (the normal path) to resolve the version
+#   from the newest draft release maintained by release-drafter.yml.
+# - Fill it in to override that (e.g. jumping minor without re-labelling merged
+#   PRs). A supplied version short-circuits before the draft lookup.
+# Either way the shared composite action performs the bump, tag, zip and publish.
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (X.Y.Z or X.Y.Z-suffix, no v prefix). Leave empty to use the version from the newest draft release.'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -17,21 +24,28 @@ concurrency:
 
 jobs:
   release:
-    name: Resolve version from draft and publish
+    name: Resolve version and publish
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Resolve version from latest draft release
+      - name: Resolve version
         id: resolve
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
+          # A supplied version overrides everything and skips the draft lookup.
+          if [[ -n "$INPUT_VERSION" ]]; then
+            echo "Using the supplied version: $INPUT_VERSION"
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           tag_name=$(gh api "repos/$REPO/releases" \
             --jq '[.[] | select(.draft==true)] | sort_by(.created_at) | reverse | .[0].tag_name // empty')
           if [[ -z "$tag_name" ]]; then
-            echo "::error::No draft release found. Wait for the Release Drafter workflow to create a draft, then retry."
+            echo "::error::No draft release found. Wait for the Release Drafter workflow to create a draft, or supply a version."
             exit 1
           fi
           if [[ ! "$tag_name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.-]+)?$ ]]; then
