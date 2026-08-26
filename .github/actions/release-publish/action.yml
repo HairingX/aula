@@ -69,7 +69,7 @@ runs:
       shell: bash
       run: |
         cd custom_components/aula
-        zip aula.zip -r ./ -x "test_*" -x "__pycache__/*" -x "*.pyc"
+        zip aula.zip -r ./ -x "*/test_*" -x "test_*" -x "*__pycache__*" -x "*.pyc"
 
     - name: Capture draft release notes and delete draft
       shell: bash
