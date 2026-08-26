@@ -69,6 +69,23 @@ must both be satisfied before anything can be published: (1) the draft release m
 exist (default flow only — see step 3a vs 3b), and (2) the maintainer must have
 explicitly approved it.**
 
+**How the release text is authored — never by hand.** The release notes are produced
+entirely by `release-drafter` from merged PR **titles** and **labels**; nobody writes or
+edits release notes in the GitHub UI. To shape what a release says, shape the PRs that go
+into it — the PR title becomes the changelog line, and its labels (`major` / `minor` /
+`patch`, plus category labels such as `enhancement` / `bug`) decide both the section it
+lands under and the resolved version. The publish step reuses the draft body verbatim, so
+the release text is finished the moment the drafter run completes.
+
+**Never publish the draft release by hand, and never hand-edit the version.** The only
+manual action in the whole flow is dispatching the `Release` workflow (step 3) after
+approval — everything else is done by Actions. Clicking **Publish** on the GitHub draft
+creates the tag at the current `main` commit *before* the manifest bump, so the tag ends
+up pointing at the previous version. That is exactly what happened to tags `v0.1.2`
+through `v0.2.5` (each carried the preceding manifest version); the workflow was
+deliberately ordered bump → commit → *then* tag to prevent it, and `v0.2.6`+ are correct.
+Publishing the draft by hand reintroduces that bug.
+
 1. **Draft is produced automatically — wait for it.** `release-drafter.yml` runs on every
    push to `main` and maintains a single GitHub **draft release** whose notes are
    auto-generated and categorized from merged PR labels (it also auto-labels PRs). The
