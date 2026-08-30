@@ -301,11 +301,30 @@ class AulaCalendarCoordinator(DataUpdateCoordinator[AulaCalendarCoordinatorData]
             else: #not requesting, reuse cached data
                 new_birthdaymap[id] = self._birthdaymap.get(id, list[AulaBirthdayEvent]())
 
+        # The API returns birthdays for the whole institution, so fetch first, then scope
+        # each child's list to the birthdays Aula relates to that child via
+        # relatedChildrenIds (== child.id). This gives every child the birthdays for all
+        # the groups they are on; a birthday shared by a group both of your children are on
+        # relates to both and therefore lands in both calendars (matching Aula's own
+        # per-child toggle in its combined calendar).
+        fetched = list[tuple[AulaChildProfile, List[AulaBirthdayEvent]]]()
         for profile in request_data_profiles:
-            #Batch fetching and then splitting birthdays across profiles is very difficult, so we fetch per institution
             birthdays = self._client.get_birthday_events([profile], now(), now() + SYNC_EVENT_MAX_TIME)
-            _LOGGER.debug(f"Fetching birthdays for id: {profile.id}, got {len(birthdays)} birthdays")
-            new_birthdaymap[profile.id] = birthdays
+            fetched.append((profile, birthdays))
+
+        # Only narrow when the relation data is actually usable, so a schema change or a
+        # wrong id assumption can never blank the calendars: fall back to the unfiltered
+        # list if no event carries relatedChildrenIds, or if none matches any child.id.
+        has_relation_data = any(b.related_children_ids for _, bl in fetched for b in bl)
+        matches_child_id = any(p.id in b.related_children_ids for p, bl in fetched for b in bl)
+        scope = has_relation_data and matches_child_id
+        if has_relation_data and not matches_child_id:
+            _LOGGER.warning("Birthday relatedChildrenIds present but matched no child.id — not scoping (possible id-field mismatch)")
+
+        for profile, birthdays in fetched:
+            scoped = [b for b in birthdays if profile.id in b.related_children_ids] if scope else birthdays
+            _LOGGER.debug(f"Birthdays for child {profile.id}: {len(birthdays)} institution-wide -> {len(scoped)} scoped (scoping={scope})")
+            new_birthdaymap[profile.id] = scoped
 
         return (new_birthdaymap, [inst.id for inst in request_data_profiles])
 

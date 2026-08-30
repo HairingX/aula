@@ -1,6 +1,4 @@
-import datetime
-from typing import List, TypedDict
-from typing import List
+from typing import List, NotRequired, TypedDict
 from datetime import datetime
 
 from .common_data import AulaStatusData
@@ -10,6 +8,8 @@ class AulaBirthdayEventData(TypedDict):
     birthday: datetime
     institutionCode: str
     name: str
+    mainGroupName: NotRequired[str|None]
+    relatedChildrenIds: NotRequired[List[int]|None]  # instProfileIds of your related children
 
 class AulaGetBirthdayEventsForInstitutionsResponse(TypedDict):
     data: List[AulaBirthdayEventData]
