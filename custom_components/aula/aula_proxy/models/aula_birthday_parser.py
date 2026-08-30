@@ -16,6 +16,7 @@ class AulaBirthdayParser(AulaParser):
             institution_code = AulaBirthdayParser._parse_str(data.get("institutionCode")),
             full_name = AulaBirthdayParser._parse_str(data.get("name")),
             main_group_name = AulaBirthdayParser._parse_str(data.get("mainGroupName")),
+            related_children_ids = AulaBirthdayParser._parse_int_list(data.get("relatedChildrenIds")),
         )
 
         return result
