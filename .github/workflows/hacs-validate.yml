@@ -1,31 +1,54 @@
 name: Code validation
 
+# Home Assistant's own check of an integration (hassfest), and HACS's check of a repository it
+# can install from.
 on:
   push:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
+  # The Release and Test build workflows run these on the exact commit they publish.
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to validate.
+        required: true
+        type: string
 
 permissions:
   contents: read
+
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   validate-hassfest:
     name: Hassfest validation
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
-        uses: actions/checkout@v6
-      - name: validation
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Validate
         uses: home-assistant/actions/hassfest@master
 
   validate-hacs:
     name: HACS validation
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
-        uses: actions/checkout@v6
-      - name: validation
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Validate
         uses: hacs/action@main
         with:
           category: integration

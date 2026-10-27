@@ -1,0 +1,58 @@
+name: Test build cleanup
+
+# Removes a branch's test builds, release and tag, once its pull request is closed or the branch
+# is deleted. HACS reads only the newest 30 releases, so old test builds would push real releases
+# out of that list.
+on:
+  pull_request:
+    types: [closed]
+  delete:
+
+permissions: {}
+
+# Not in the release group: GitHub keeps one pending run per group, so a cleanup waiting there
+# could cancel a pending release.
+concurrency:
+  group: test-build-cleanup-${{ github.event.pull_request.head.ref || github.event.ref }}
+  cancel-in-progress: false
+
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cleanup:
+    name: Remove the branch's test builds
+    # A fork's pull request gets a read-only token, and its branch has no test builds here.
+    if: >-
+      (github.event_name == 'pull_request'
+        && github.event.pull_request.head.repo.full_name == github.repository)
+      || (github.event_name == 'delete' && github.event.ref_type == 'branch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: ${{ github.event.pull_request.head.ref || github.event.ref }}
+    steps:
+      - name: Check out the selection of a branch's test builds
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts/branch_test_builds.jq
+          sparse-checkout-cone-mode: false
+
+      - name: Remove them
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq "$(cat .github/scripts/branch_test_builds.jq)" > "$RUNNER_TEMP/old"
+          while read -r old; do
+            echo "Removing $old"
+            if ! gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; then
+              # Accepted only when a test build of the same branch removed it meanwhile.
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$old" --silent 2> "$RUNNER_TEMP/error" && exit 1
+              grep -q "HTTP 404" "$RUNNER_TEMP/error"
+            fi
+          done < "$RUNNER_TEMP/old"

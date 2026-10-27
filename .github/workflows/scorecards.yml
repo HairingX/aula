@@ -17,6 +17,11 @@ on:
 # Declare default permissions as read only.
 permissions: read-all
 
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   analysis:
     name: Scorecards analysis

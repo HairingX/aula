@@ -26,7 +26,12 @@ python -m unittest custom_components.aula.aula_proxy.test_messages.TestMessages.
 
 **Formatting:** Black with isort (`--profile black`), configured for format-on-save in VSCode.
 
-**CI validation:** HACS validation and hassfest run on push/PR via GitHub Actions.
+**CI validation:** unit tests (including the release scripts in `.github/scripts`), HACS validation and hassfest run on push/PR via GitHub Actions, and again on the exact commit a release or test build publishes.
+
+**Release script tests:**
+```bash
+python -m unittest discover -v -s ./.github/scripts -p "test_*.py"
+```
 
 ## Architecture
 
@@ -62,79 +67,77 @@ Config Flow (Unilogin credentials)
 
 ## Release Process
 
-When the maintainer asks to "release" (or cut/publish a release), follow this exact
-process. It is split across three GitHub Actions workflows in `.github/workflows/` plus
-one shared composite action in `.github/actions/release-publish/`. **Two preconditions
-must both be satisfied before anything can be published: (1) the draft release must
-exist (unless you supply a version override — see step 3), and (2) the maintainer must
-have explicitly approved it.**
+When the maintainer asks to "release" (or cut/publish a release), follow this process. Design
+and rationale: `docs/designs/2026-10-27-release-flow-best-practice.md`.
 
-**How the release text is authored — never by hand.** The release notes are produced
-entirely by `release-drafter` from merged PR **titles** and **labels**; nobody writes or
-edits release notes in the GitHub UI. To shape what a release says, shape the PRs that go
-into it — the PR title becomes the changelog line, and its labels (`major` / `minor` /
-`patch`, plus category labels such as `enhancement` / `bug`) decide both the section it
-lands under and the resolved version. The publish step reuses the draft body verbatim, so
-the release text is finished the moment the drafter run completes.
+**The manifest in the repository always says `0.0.0`, and the draft release is never published
+by hand.** HACS installs the zip a release carries (`zip_release` and `filename` in `hacs.json`),
+and only the `Release` workflow builds it: the manifest in the zip says the release's version,
+and the workflow refuses to publish a zip whose manifest says anything else. A HACS install of a
+branch instead of a release shows version `0.0.0`.
 
-**Never publish the draft release by hand, and never hand-edit the version.** The only
-manual action in the whole flow is dispatching the `Release` workflow (step 3) after
-approval — everything else is done by Actions. Clicking **Publish** on the GitHub draft
-creates the tag at the current `main` commit *before* the manifest bump, so the tag ends
-up pointing at the previous version. That is exactly what happened to tags `v0.1.2`
-through `v0.2.5` (each carried the preceding manifest version); the workflow was
-deliberately ordered bump → commit → *then* tag to prevent it, and `v0.2.6`+ are correct.
-Publishing the draft by hand reintroduces that bug.
+Why: tags `v0.1.0`-`v0.2.5` pointed at commits whose manifest named another version, and the
+`v0.2.0` zip installs as `0.1.10`, because the version was committed to `main` by hand or after
+tagging. Now nothing is committed by a release: the tested commit is tagged, and the version
+exists only in the tag and the zip.
 
-1. **Draft is produced automatically — wait for it.** `release-drafter.yml` runs on every
-   push to `main` and maintains a single GitHub **draft release** whose notes are
-   auto-generated and categorized from merged PR labels (it also auto-labels PRs). The
-   draft's `tag_name` is `v$RESOLVED_VERSION` — the version is itself resolved from PR
-   labels (`major` / `minor` / `patch`, defaulting to `patch`). After the relevant changes
-   are merged to `main`, **wait until the Release Drafter workflow run has completed** so
-   the draft reflects them. Never publish before the draft is up to date — the publish
-   step reuses the draft's body as the release notes.
+**How the release text is authored - never by hand.** Release Drafter keeps a draft release
+whose notes are made from merged pull request **titles** and **labels**. To shape what a
+release says, shape the pull requests: the title becomes the changelog line, and the labels
+decide the section and the version. Notes list only what users get: `chore`, `documentation`,
+`dependencies` and `skip-changelog` are left out.
 
-2. **Review and approval — mandatory, maintainer only.** Present the current draft release
-   notes to the maintainer and get **explicit approval** of the content (and the version
-   number that release-drafter resolved) before proceeding. Do NOT publish a release
-   without this approval, even if asked to "just release it" — confirm the draft first.
+**Branches and labels.** Name a branch by the kind of change; the autolabeler labels its pull
+request from the name: `feature/<what>` -> `feature request`, `fix/<what>` -> `bug`,
+`docs/<what>` -> `documentation`, `chore/<what>` (CI, tooling, anything that stays in the
+repository) -> `chore`. A change to what users install is a `fix/` or a `feature/`, never a
+`chore/`. Put `breaking-change` or `minor` on a pull request that needs a minor bump; a patch is
+the default. **No label gives a major version**: a label placed wrongly must not release one.
 
-3. **Publish — the `Release` workflow (`release.yml`).** A single manual
-   `workflow_dispatch` with **one optional `version` input**:
+1. **Wait for the draft.** `release-drafter.yml` runs on every push to `main` and keeps one
+   draft release proposing the next version (`v$RESOLVED_VERSION`). After the changes are merged,
+   wait until the Release Drafter run on `main` has completed. The `Release` workflow refuses to
+   use a draft that is not up to date with `main`.
 
-   - **Leave it empty** (the normal path): the workflow reads `tag_name` from the newest
-     draft release (`gh api repos/{owner}/{repo}/releases`, filtered to drafts and sorted
-     by `created_at` desc), strips the leading `v`, and uses that as the version. It
-     **fails fast** if no draft exists or the tag format is unexpected.
-   - **Fill it in** (`X.Y.Z` or `X.Y.Z-suffix`, without the `v` prefix) to **override** the
-     resolved version — e.g. to jump minor without re-labelling already-merged PRs. A
-     supplied version short-circuits before the draft lookup; a draft, if present, is still
-     captured as the notes and deleted.
+2. **Review and approval - mandatory, maintainer only.** Present the draft's notes and the
+   version to the maintainer and get **explicit approval** before running Release. Do NOT
+   release without it, even if asked to "just release it" - confirm the draft first.
 
-   The workflow then delegates to the shared composite action
-   `.github/actions/release-publish/action.yml`, which (in order): validates the version,
-   verifies tag `v$VERSION` does not already exist, bumps
-   `custom_components/aula/manifest.json` via `.github/scripts/update_hacs_manifest.py`,
-   commits the bump and pushes to `main`, creates and pushes tag `v$VERSION`, builds
-   `aula.zip` (excluding test files, `__pycache__`, `*.pyc`), **captures the Release
-   Drafter draft's body as the release notes and deletes the draft (if present)**, then
-   publishes the GitHub Release for `v$VERSION` with `aula.zip` attached. Do not bump the
-   manifest or create the tag by hand; the composite owns version bump, tag, zip, and
-   publish. The workflow declares `concurrency: release` so two simultaneous runs
-   serialize rather than race.
+3. **Run the `Release` workflow** (`release.yml`) from the Actions tab, on `main`, choosing
+   **release candidate** or **final release**. It works out the version: the next release
+   candidate of the open series (`0.3.0rc1` -> `0.3.0rc2`), or the final release that ends it
+   (`0.3.0`); a draft naming a higher version starts a new series (`0.3.0rc1`). Type a version
+   (canonical PEP 440 without `v`, of the kind chosen) only for a new major, or to override a
+   version worked out wrongly.
 
-4. **Dev/pre-releases** use a separate workflow, `release-dev.yml` (`Release dev`): a manual
-   `workflow_dispatch` taking a `tag` input (e.g. `v0.3.0-dev.1`) that builds `aula.zip` and
-   uploads it as a **prerelease** asset. Use this only when a dev/prerelease build is
-   explicitly requested; it does not bump the manifest and does not interact with the
-   draft.
+   It refuses: a version not higher than every release tagged; a non-canonical version; a new
+   major not typed as override; a release with no pull request merged since the previous release
+   (for a final release, the previous final release). It then runs the unit tests and the hassfest
+   and HACS validation on the exact commit, builds `aula.zip` from that commit with the
+   manifest's version set (tests, `__pycache__` and `*.pyc` left out) and checks it, tags that
+   commit, and publishes the GitHub release with the zip - a release candidate as a pre-release,
+   which HACS offers only to users who switch beta versions on.
 
-Summary of ownership: Release Drafter (automatic, on push to `main`) owns the draft notes
-and the resolved version → maintainer approves → the `Release` workflow dispatches the
-shared composite (optionally with a version supplied to its input to override the draft),
-which owns version bump, tagging, zipping, and publishing. Build + draft must be in place
-(unless a version is supplied), and approval given, before any release.
+   A release candidate's notes are written by GitHub from the pull requests since the previous
+   release candidate or final release (`.github/release.yml` groups them). A final release's notes
+   are the draft's body, and the final release deletes the draft; a release candidate keeps it.
+
+   If publishing fails part-way, use **Re-run failed jobs**: it accepts the tag it already pushed
+   on the same commit and uploads the zip to the release it already created. **Re-run all jobs**
+   is refused once the version is tagged.
+
+4. **Test builds** (`test-build.yml`, `Test build`): to try a development branch on a real Home
+   Assistant, run it from the Actions tab on that branch. It tests and validates the branch's
+   commit and publishes it as a pre-release such as `v0.2.9b1` (the next release's version with
+   the first free `b<n>`); the commit is tagged, the version is set only in the zip. A new test
+   build of the branch replaces the previous one; closing the pull request or deleting the branch
+   removes them (`test-build-cleanup.yml`). HACS offers the newest pre-release to beta users,
+   test build or release candidate alike. A test build needs a draft release: after a final
+   release, wait for the next merge into `main`. Test-build tags never count as releases.
+
+Never create tags, edit the manifest's version or publish the draft by hand: the workflows own the
+version, the tag, the zip and the release. `Release` and `Test build` share the concurrency group
+`release`, so they never run at the same time.
 
 ## Agent Workflow (MANDATORY)
 
@@ -146,4 +149,4 @@ which owns version bump, tagging, zipping, and publishing. Build + draft must be
 - Python 3.14, minimum Home Assistant 2026.3.0
 - 4-space indentation, LF line endings
 - unittest framework (not pytest) for tests; test fixtures are JSON files in `aula_proxy/test_messages/`
-- Version tracked in `custom_components/aula/manifest.json`
+- The version lives in the release tag and the release zip; `custom_components/aula/manifest.json` says `0.0.0` (see Release Process)

@@ -2,40 +2,47 @@ name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 change-template: '- #$NUMBER $TITLE @$AUTHOR'
 sort-direction: ascending
-exclude-labels:
-  - 'skip-changelog'
 categories:
+  # The notes are for users: what is changed for them, not work on the repository itself.
+  - type: 'pre-exclude'
+    when:
+      labels:
+        - 'skip-changelog'
+        - 'chore'
+        - 'documentation'
+        - 'dependencies'
+
+  # Each pull request is listed once, under the first of these its labels match.
   - title: '🛠 Breaking Changes'
-    labels:
-      - 'breaking-change'
+    exclusive: true
+    when:
+      label: 'breaking-change'
 
   - title: '🚀 Features'
-    labels:
-      - 'enhancement'
+    exclusive: true
+    when:
+      labels:
+        - 'feature request'
+        - 'enhancement'
 
   - title: '🐛 Bug Fixes'
-    labels:
-      - 'bug'
+    exclusive: true
+    when:
+      labels:
+        - 'fix'
+        - 'bugfix'
+        - 'bug'
 
-  - title: '🧰 Maintenance'
-    labels:
-      - 'chore'
-
-  - title: ":package: Dependencies"
-    labels:
-      - 'dependencies'
-
-version-resolver:
-  major:
-    labels:
-      - 'major'
-  minor:
-    labels:
-      - 'minor'
-  patch:
-    labels:
-      - 'patch'
-  default: patch
+  # The next version: a minor bump for a breaking change or by label, a patch otherwise. A major
+  # is never taken from a label, as one placed wrongly must not release a new major version.
+  - type: 'version-resolver'
+    semver-increment: 'minor'
+    when:
+      labels:
+        - 'breaking-change'
+        - 'minor'
+  - type: 'version-resolver'
+    semver-increment: 'patch'
 template: |
   ## Changes
   $CHANGES
@@ -43,9 +50,12 @@ autolabeler:
   - label: 'bug'
     branch:
       - '/fix\/.+/'
-  - label: 'enhancement'
+  - label: 'feature request'
     branch:
       - '/feature\/.+/'
+  - label: 'documentation'
+    branch:
+      - '/docs\/.+/'
   - label: 'chore'
     branch:
       - '/chore\/.+/'

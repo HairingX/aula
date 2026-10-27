@@ -5,9 +5,22 @@ on:
     branches:
       - main
   pull_request:
+  workflow_dispatch:
+  # The Release and Test build workflows run these on the exact commit they publish.
+  workflow_call:
+    inputs:
+      ref:
+        description: The commit to test.
+        required: true
+        type: string
 
 permissions:
   contents: read
+
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   test:
@@ -15,16 +28,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
-      - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/checkout@v7
         with:
-          python-version: '3.14'
-          allow-prereleases: true
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install beautifulsoup4 lxml
+          python -m pip install -r requirements.txt
+          python -m pip install beautifulsoup4 lxml packaging==26.3
+
       - name: Run tests
-        run: |
-          python -m unittest discover -v -s ./custom_components/aula/aula_proxy -p "test_*.py"
+        run: python -m unittest discover -v -s ./custom_components/aula/aula_proxy -p "test_*.py"
+
+      - name: Test the release scripts
+        run: python -m unittest discover -v -s ./.github/scripts -p "test_*.py"

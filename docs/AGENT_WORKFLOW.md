@@ -282,7 +282,7 @@ Each stage acts as a gate. If a stage identifies issues, the pipeline returns to
 - Verify compliance with HA custom component requirements
 - Check entity registration follows HA patterns
 - Ensure config flow follows HA standards (including error handling, reauth, reconfigure)
-- Verify `manifest.json` is correct (version, dependencies, requirements)
+- Verify `manifest.json` is correct (dependencies, requirements; its `version` stays `0.0.0`, as releases set it)
 - Check that `strings.json` and translations are in sync
 
 ### 8b. HASS Best Practices
@@ -296,7 +296,7 @@ Each stage acts as a gate. If a stage identifies issues, the pipeline returns to
 - Verify HACS validation would pass (`hacs-validate.yml`)
 - Verify hassfest validation would pass
 - Check that GitHub Actions workflows are correct and up to date
-- Ensure release workflow compatibility (`release.yml`, `release-dev.yml`)
+- Ensure release workflow compatibility (`release.yml`, `test-build.yml`, `test-build-cleanup.yml`) and that the release script tests pass
 
 ### 8d. Library Currency
 - Check if dependencies in `manifest.json` are current

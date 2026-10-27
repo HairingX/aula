@@ -1,32 +1,38 @@
 name: Release Drafter
 
+# Keeps a draft release proposing the next version, from the labels of the pull requests merged
+# since the last final release, and labels pull requests by their branch's name. The draft is
+# never published by hand: the Release workflow publishes it.
 on:
   push:
     branches:
       - main
-  # pull_request event is required for autolabeler
   pull_request:
     types: [opened, reopened, synchronize]
 
-permissions:
-  contents: read
+permissions: {}
+
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   update_release_draft:
-    name: Update release draft
+    name: Update the release draft
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: read
     steps:
-      - name: Draft release
+      - name: Draft the release
         uses: release-drafter/release-drafter@v7
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
 
   autolabel_pr:
-    name: Auto-label pull request
+    name: Label the pull request
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -36,4 +42,4 @@ jobs:
       - name: Apply labels
         uses: release-drafter/release-drafter/autolabeler@v7
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
