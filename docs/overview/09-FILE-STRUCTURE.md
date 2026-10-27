@@ -71,9 +71,6 @@ custom_components/aula/
 ├── services.yaml                            # Service definitions
 │   - aula.api_call: Custom API calls with uri and post_data
 │
-├── strings.json                             # Localization keys
-│   - Config flow strings, entity names, state translations
-│
 ├── translations/
 │   ├── en.json                              # English translations
 │   └── da.json                              # Danish translations
@@ -163,11 +160,13 @@ custom_components/aula/
     │   ├── get_notifications_response.py
     │   └── get_weekly_plans_response.py
     │
-    ├── utils/
-    │   └── list_utils.py                    # Utility functions
-    │
-    └── test_messages/                       # Test fixtures
-        └── *.json                           # Sample API response JSON
+    └── utils/
+        └── list_utils.py                    # Utility functions
+
+tests/
+├── conftest.py                              # Home Assistant fixtures; fails on deprecations
+└── aula_proxy/                              # Tests of the API client and parsers
+    └── fixtures/                            # Made-up API responses; captured ones stay untracked
 ```
 
 ## File Size and Complexity
@@ -193,5 +192,5 @@ custom_components/aula/
 | `custom_components/aula/aula_proxy/` | API client module (standalone) |
 | `custom_components/aula/aula_proxy/models/` | All data models and parsers |
 | `custom_components/aula/aula_proxy/responses/` | API response type definitions |
-| `custom_components/aula/aula_proxy/test_messages/` | JSON test fixtures |
+| `tests/aula_proxy/fixtures/` | JSON test fixtures |
 | `custom_components/aula/translations/` | i18n files (en, da) |

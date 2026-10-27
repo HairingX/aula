@@ -1,0 +1,173 @@
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: The integration registers no service actions.
+  appropriate-polling:
+    status: done
+    comment: >-
+      The data coordinator polls every 5 minutes; the calendar coordinator every 10 minutes,
+      fetching birthdays daily and events, weekly plans and newsletters every 2 hours.
+  brands:
+    status: todo
+    comment: No icon or logo is shipped in brand/, nor is there one in home-assistant/brands.
+  common-modules: done
+  config-flow-test-coverage:
+    status: todo
+    comment: The config flow has no tests.
+  config-flow:
+    status: todo
+    comment: >-
+      Setup is a config flow, but its fields have no data_description.
+  dependency-transparency: done
+  docs-actions:
+    status: exempt
+    comment: The integration registers no service actions.
+  docs-conditions:
+    status: exempt
+    comment: The integration provides no conditions.
+  docs-high-level-description:
+    status: todo
+    comment: The README says only that it integrates Aula; it does not describe what Aula is.
+  docs-installation-instructions:
+    status: todo
+    comment: >-
+      The README covers installing through HACS, but not adding the integration and logging in
+      with MitID.
+  docs-removal-instructions:
+    status: todo
+    comment: The README does not say how to remove the integration.
+  docs-triggers:
+    status: exempt
+    comment: The integration provides no triggers.
+  entity-event-setup:
+    status: done
+    comment: >-
+      Calendars register with their coordinator in async_added_to_hass and unregister in
+      async_will_remove_from_hass.
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data:
+    status: todo
+    comment: The client and coordinators are kept in hass.data, not in entry.runtime_data.
+  test-before-configure:
+    status: done
+    comment: The flow completes the MitID login and only creates the entry with its tokens.
+  test-before-setup:
+    status: done
+    comment: >-
+      The first refresh checks the connection and raises ConfigEntryAuthFailed on refused
+      credentials; other failures make setup retry.
+  unique-config-entry:
+    status: todo
+    comment: >-
+      The unique id is the ID the user types, not the account, so the same MitID account can be
+      added twice under two IDs.
+
+  # Silver
+  action-exceptions:
+    status: exempt
+    comment: The integration registers no service actions.
+  config-entry-unloading: done
+  docs-configuration-parameters:
+    status: exempt
+    comment: The integration has no options flow.
+  docs-installation-parameters:
+    status: todo
+    comment: >-
+      The README does not describe the setup fields: the ID, the MitID username, and the
+      hardware token's password and code.
+  entity-unavailable:
+    status: done
+    comment: >-
+      Entities follow the coordinator's last update; the presence sensors are also unavailable
+      without a daily overview for their child.
+  integration-owner: done
+  log-when-unavailable:
+    status: todo
+    comment: >-
+      A failed refresh is logged once by the coordinator, but a partial failure (daily
+      overviews, messages or notifications) logs a warning at every poll until the third.
+  parallel-updates:
+    status: todo
+    comment: No platform sets PARALLEL_UPDATES.
+  reauthentication-flow: done
+  test-coverage:
+    status: todo
+    comment: The tests cover about 29% of the code; above 95% is required.
+
+  # Gold
+  devices: done
+  diagnostics:
+    status: todo
+    comment: The integration has no diagnostics.
+  discovery-update-info:
+    status: exempt
+    comment: A cloud service has nothing on the network to discover.
+  discovery:
+    status: exempt
+    comment: A cloud service has nothing on the network to discover.
+  docs-data-update:
+    status: todo
+    comment: The README does not say how often data is fetched.
+  docs-examples:
+    status: done
+    comment: The README shows dashboards and template sensors built from the calendars.
+  docs-known-limitations:
+    status: todo
+    comment: >-
+      The README lists features not implemented and calendars not tested, but no limitations
+      of what is implemented.
+  docs-supported-devices:
+    status: exempt
+    comment: The integration connects to the Aula service, not to devices.
+  docs-supported-functions:
+    status: todo
+    comment: The README lists the entities, but not the Unread Presence binary sensor.
+  docs-troubleshooting:
+    status: todo
+    comment: The README has no troubleshooting section.
+  docs-use-cases:
+    status: todo
+    comment: The README shows dashboard examples but describes no use cases.
+  dynamic-devices:
+    status: todo
+    comment: >-
+      Entities for children are created at setup only; a child added to the account appears
+      after a reload.
+  entity-category:
+    status: done
+    comment: Every entity is primary data; none is configuration or diagnostic.
+  entity-device-class:
+    status: done
+    comment: >-
+      Sensors use the enum and duration device classes; no binary sensor device class fits an
+      unread item.
+  entity-disabled-by-default:
+    status: todo
+    comment: No entity is disabled by default, and which are rarely used has not been assessed.
+  entity-translations: done
+  exception-translations:
+    status: todo
+    comment: Exceptions are raised with English messages, not translation keys.
+  icon-translations:
+    status: todo
+    comment: Icons are set in code through _attr_icon; there is no icons.json.
+  reconfiguration-flow: done
+  repair-issues:
+    status: exempt
+    comment: Nothing the user must repair has been found; refused credentials start reauthentication.
+  stale-devices:
+    status: exempt
+    comment: An entry is one device, which goes with the entry.
+
+  # Platinum
+  async-dependency:
+    status: todo
+    comment: The client uses requests, a synchronous library, through executor jobs.
+  inject-websession:
+    status: todo
+    comment: The client opens its own requests sessions; it cannot take Home Assistant's aiohttp session.
+  strict-typing:
+    status: todo
+    comment: pyright strict does not yet pass on all files.

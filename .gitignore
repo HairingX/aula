@@ -1,23 +1,19 @@
 __pycache__
-pythonenv*
-venv
 .venv
+.pytest_cache
 .coverage
 .idea
-.storage
 .DS_Store
-config/.HA_VERSION
-config/blueprints/
-config/home-assistant.log
-config/home-assistant.log.1
-config/home-assistant.log.fault
-config/home-assistant_v2.db
-config/home-assistant_v2.db-shm
-config/home-assistant_v2.db-wal
-skoleskema.json
-secrets.yml
-test_messages/
-.claude/settings.local.json
-config/.cache/
-config/.ha_run.lock
+.claude/worktrees/
+mysecrets.py
+
+# The development instance of Home Assistant: only its configuration.yaml is tracked.
+config/*
+!config/configuration.yaml
 docs/temp/
+# Responses captured from a real Aula account hold children's personal data: they stay on the
+# machine they were captured on. Only fixtures made up for the tests are tracked.
+skoleskema.json
+test_messages/
+tests/aula_proxy/fixtures/*
+!tests/aula_proxy/fixtures/easyiq_weekplan_response.json
