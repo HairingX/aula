@@ -139,6 +139,17 @@ class TestNextVersion(unittest.TestCase):
             ):
                 _next(FINAL_RELEASE, "", [], override=override)
 
+    def test_a_development_or_post_release_is_refused(self) -> None:
+        for kind, override in (
+            (RELEASE_CANDIDATE, "1.0.0.dev1"),
+            (RELEASE_CANDIDATE, "1.0.0rc1.post1"),
+            (FINAL_RELEASE, "0.3.0.post1"),
+        ):
+            with self.subTest(override=override), self.assertRaisesRegex(
+                SystemExit, "must be MAJOR.MINOR.PATCH"
+            ):
+                _next(kind, "", ["v0.2.8"], override=override)
+
     def test_an_unknown_kind_is_refused(self) -> None:
         with self.assertRaisesRegex(SystemExit, "neither"):
             _next("final", "v0.1.0", [])
@@ -171,9 +182,17 @@ class TestTestBuildTags(unittest.TestCase):
     def test_tags_that_name_no_release_are_skipped(self) -> None:
         self.assertEqual(
             known_versions(
-                ["v0.1.0", "latest", "", "0.2.0rc1", "v0.2.0b1", "v0.2.0.dev1"]
+                [
+                    "v0.1.0",
+                    "latest",
+                    "",
+                    "0.2.0rc1",
+                    "v0.2.0b1",
+                    "v0.2.0.dev1",
+                    "v0.1.1\r",
+                ]
             ),
-            [Version("0.1.0"), Version("0.2.0rc1")],
+            [Version("0.1.0"), Version("0.2.0rc1"), Version("0.1.1")],
         )
 
 
@@ -236,7 +255,8 @@ class TestPreviousTag(unittest.TestCase):
 
     def test_the_notes_skip_test_builds(self) -> None:
         self.assertEqual(
-            previous_tag(Version("0.2.0rc1"), ["v0.1.0", "v0.2.0b3"]), "v0.1.0"
+            previous_tag(Version("0.2.0rc1"), ["v0.1.0", "v0.2.0b3", "v0.1.5.dev1"]),
+            "v0.1.0",
         )
 
     def test_the_first_release_notes_start_from_the_beginning(self) -> None:
@@ -260,7 +280,7 @@ class TestDraft(unittest.TestCase):
         lines = [
             json.dumps(
                 {
-                    "id": 1,
+                    "id": 9,
                     "draft": True,
                     "tag_name": "v0.2.8",
                     "created_at": "2026-01-01T00:00:00Z",
@@ -287,6 +307,24 @@ class TestDraft(unittest.TestCase):
         found = newest_draft(lines)
         assert found is not None
         self.assertEqual(found["id"], 3)
+
+    def test_a_body_with_a_unicode_line_separator_is_read(self) -> None:
+        body = "- #15 Title with \u2028 and \u0085 inside"
+        release = {
+            "id": 7,
+            "draft": True,
+            "tag_name": "v0.2.9",
+            "created_at": "x",
+            "body": body,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            drafts = Path(directory) / "drafts"
+            drafts.write_text(
+                json.dumps(release, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            output = _run(["draft", str(drafts)])
+        encoded = output.splitlines()[2].removeprefix("draft_body=")
+        self.assertEqual(base64.b64decode(encoded).decode("utf-8"), body)
 
     def test_without_a_draft_there_is_none(self) -> None:
         self.assertIsNone(newest_draft([]))

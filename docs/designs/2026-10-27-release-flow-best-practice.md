@@ -149,7 +149,7 @@ deleted with their branch, and a branch's `0.3.0b1` must not force the next rele
      notes from the previous tag, a final release with the captured draft body;
    - final release only: delete the captured draft id; a 404 (already deleted) is accepted.
    "Re-run all jobs" is refused by `prepare` (the tag is no longer higher), by design.
-`permissions: {}` at the top; `concurrency: release`, shared with Test build.
+`permissions: {}` at the top; `concurrency: release`. Test build has its own group (section 12).
 
 **Zip contents.** `release_zip.py` writes the files of `custom_components/aula/`, leaving out
 `__pycache__`, `*.pyc`, and test code: any path with a component starting with `test_` (today
@@ -227,6 +227,7 @@ branch-line filter matches exactly (run with `jq` when available).
 1. Ruleset on `main`: pull requests only, required checks `Run unit tests`, `Hassfest validation`,
    `HACS validation`; bypass for the owner only for merging.
 2. Optional ruleset for branch names (`feature/`, `fix/`, `docs/`, `chore/`, `dependabot/`).
+3. Create the labels `feature request` and `dependencies`.
 
 ## 8. Best practice checklist
 
@@ -290,3 +291,24 @@ Both teams: REQUEST CHANGES, nothing blocking. All resolved in sections 3-6:
   - T2 cleanup runs when a PR is closed but its branch kept; a test build finishing after that
     still publishes: accepted and documented (test builds can run on branches without a PR, so
     an open PR cannot be required); the next cleanup or the branch's deletion removes it.
+
+## 12. Implementation review (Stages 5-8) and fixes
+
+QA, and performance + network + HA compliance, reviewed the implementation (commit b3b868e).
+Each finding was checked against source before it was fixed:
+
+| # | Finding | Evidence | Fix |
+|---|---|---|---|
+| I1 | An override `1.0.0.dev1`, `1.0.0rc1.post1` or `0.3.0.post1` was accepted, then ignored as a tag, so releasable twice | throwaway cases | `.dev`/`.post` refused; test |
+| I2 | A final release's re-run could upload the zip to the Release Drafter draft of the same tag | gh 2.89 `pkg/cmd/release/shared/fetch.go` looks up published and draft releases by tag | the draft is deleted before publishing; its notes were captured in prepare |
+| I3 | `gh release create` with an asset creates a draft first and publishes it after the upload; an interrupted run leaves a draft of the tag | gh 2.89 `create.go:499-510` | before creating, drafts of the tag are deleted (Release and Test build) |
+| I4 | Test build could not resume after the tag push | `test-build.yml` | tag and publish steps made idempotent like Release's |
+| I5 | Test build in the `release` group can cancel a pending release (one pending run per group) | GitHub concurrency docs | own group `test-build`; releases ignore test-build tags |
+| I6 | HACS validation does not validate the commit published: `hacs/action` validates through the API at the event's ref unless `REPOSITORY_REF` is set | HACS `action/action.py:114-158` | `REPOSITORY_REF` set to the commit for workflow calls (also missing in the sibling) |
+| I7 | `str.splitlines()` splits JSON lines on U+2028/U+0085 inside a pull request title | reproduced | split on `\n` only; test |
+| I8 | Tests that survived mutations (draft sort key, tag strip, `.dev` filter) | mutation run | tests strengthened; 7 mutations of the version logic each fail a test |
+
+Accepted, not changed: a release whose merged pull requests are all chores passes the change check
+(as in the sibling); the zip has no directory entries (HACS extracts files); the labels `feature
+request`, `documentation` and `dependencies` are used by the configuration; `feature request` and
+`dependencies` do not exist in the repository yet and are listed for the owner to create.

@@ -12,9 +12,11 @@ on:
 
 permissions: {}
 
+# Not in the release group, as releases ignore test-build tags: GitHub keeps one pending run per
+# group, so a test build waiting there could cancel a pending release.
 concurrency:
-  # Test builds and releases number their tags from the same list.
-  group: release
+  # Test builds number their tags from the same list.
+  group: test-build
   cancel-in-progress: false
 
 env:
@@ -146,11 +148,21 @@ jobs:
 
       - name: Tag the tested commit
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Test build $TAG of $BRANCH" "$SHA"
-          # Only the tag: the branch stays as it is.
-          git push origin "refs/tags/$TAG"
+          # A re-run finds the tag it pushed before; the tag is annotated, so compare its commit.
+          if git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null; then
+            tagged=$(git rev-parse "$TAG^{commit}")
+            if [[ "$tagged" != "$SHA" ]]; then
+              echo "::error::$TAG already tags $tagged, not the tested commit $SHA."
+              exit 1
+            fi
+            echo "$TAG already tags $SHA."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Test build $TAG of $BRANCH" "$SHA"
+            # Only the tag: the branch stays as it is.
+            git push origin "refs/tags/$TAG"
+          fi
 
       - name: Replace the branch's previous test builds
         run: |
@@ -167,6 +179,20 @@ jobs:
 
       - name: Publish the pre-release
         run: |
+          # releases/tags/... returns only a published release, never a draft of the same tag.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --silent 2>/dev/null; then
+            echo "$TAG is already published; uploading the zip again."
+            gh release upload "$TAG" "$ZIP" --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
+          # gh creates a release as a draft and publishes it once the zip is uploaded: an attempt
+          # that died in between left a draft of this tag behind.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft and .tag_name == env.TAG) | .id' > "$RUNNER_TEMP/stray"
+          while read -r id; do
+            echo "Removing the draft $id of $TAG"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" --silent
+          done < "$RUNNER_TEMP/stray"
           {
             echo "Test build of branch \`$BRANCH\`, commit $SHA."
             echo

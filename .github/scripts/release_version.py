@@ -45,7 +45,13 @@ def _canonical(text: str) -> Version:
         sys.exit(
             f"::error::write {text!r} as {str(version)!r}, its canonical PEP 440 form"
         )
-    if len(version.release) != 3 or version.epoch or version.local:
+    if (
+        len(version.release) != 3
+        or version.epoch
+        or version.local
+        or version.dev is not None
+        or version.post is not None
+    ):
         # 1.2 and 1.2.0 are one version to PEP 440 but two tags.
         sys.exit(
             f"::error::{text!r} must be MAJOR.MINOR.PATCH, optionally with a pre-release, "
@@ -223,7 +229,8 @@ def write(text: str, path: Path) -> None:
 
 
 def _lines(path: str) -> list[str]:
-    return Path(path).read_text(encoding="utf-8").splitlines()
+    # Not splitlines(): JSON written by jq keeps U+2028 and the like unescaped inside strings.
+    return Path(path).read_text(encoding="utf-8").split("\n")
 
 
 def _print(version: Version) -> None:

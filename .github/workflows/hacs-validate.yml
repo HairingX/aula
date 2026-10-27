@@ -48,7 +48,18 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
+      # HACS validates through the GitHub API, at the ref of the event unless told otherwise:
+      # for a workflow call that is the branch, not the commit being published.
       - name: Validate
+        if: inputs.ref == ''
         uses: hacs/action@main
+        with:
+          category: integration
+
+      - name: Validate the commit being published
+        if: inputs.ref != ''
+        uses: hacs/action@main
+        env:
+          REPOSITORY_REF: ${{ inputs.ref }}
         with:
           category: integration

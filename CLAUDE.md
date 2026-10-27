@@ -122,8 +122,9 @@ the default. **No label gives a major version**: a label placed wrongly must not
    release candidate or final release (`.github/release.yml` groups them). A final release's notes
    are the draft's body, and the final release deletes the draft; a release candidate keeps it.
 
-   If publishing fails part-way, use **Re-run failed jobs**: it accepts the tag it already pushed
-   on the same commit and uploads the zip to the release it already created. **Re-run all jobs**
+   If publishing fails part-way, use **Re-run failed jobs** (Release and Test build alike): it
+   accepts the tag it already pushed on the same commit, removes a draft an interrupted upload
+   left behind, and uploads the zip to the release it already created. **Re-run all jobs**
    is refused once the version is tagged.
 
 4. **Test builds** (`test-build.yml`, `Test build`): to try a development branch on a real Home
@@ -136,8 +137,9 @@ the default. **No label gives a major version**: a label placed wrongly must not
    release, wait for the next merge into `main`. Test-build tags never count as releases.
 
 Never create tags, edit the manifest's version or publish the draft by hand: the workflows own the
-version, the tag, the zip and the release. `Release` and `Test build` share the concurrency group
-`release`, so they never run at the same time.
+version, the tag, the zip and the release. Two `Release` runs never run at the same time, nor two
+test builds; GitHub keeps only one waiting run per workflow, so a third dispatch cancels the one
+waiting.
 
 ## Agent Workflow (MANDATORY)
 

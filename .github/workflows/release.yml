@@ -233,6 +233,19 @@ jobs:
             git push origin "refs/tags/$TAG"
           fi
 
+      # Before publishing: gh finds a release by its tag among drafts too, so a re-run would
+      # otherwise upload the zip to the draft of the same tag. Its notes were captured in prepare.
+      # A release candidate keeps the draft: the final release that ends its series takes the
+      # draft's notes, and test builds take their version from it.
+      - name: Delete the draft the final release replaces
+        if: needs.prepare.outputs.prerelease == 'false' && needs.prepare.outputs.draft_id != ''
+        run: |
+          if ! gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$DRAFT_ID" --silent 2> "$RUNNER_TEMP/error"; then
+            cat "$RUNNER_TEMP/error"
+            # Deleted by an earlier attempt of this run.
+            grep -q "HTTP 404" "$RUNNER_TEMP/error"
+          fi
+
       - name: Publish the GitHub release with the zip
         run: |
           # releases/tags/... returns only a published release, never the draft of the same tag.
@@ -241,6 +254,14 @@ jobs:
             gh release upload "$TAG" "$ZIP" --repo "$GITHUB_REPOSITORY" --clobber
             exit 0
           fi
+          # gh creates a release as a draft and publishes it once the zip is uploaded: an attempt
+          # that died in between left a draft of this tag behind.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft and .tag_name == env.TAG) | .id' > "$RUNNER_TEMP/stray"
+          while read -r id; do
+            echo "Removing the draft $id of $TAG"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" --silent
+          done < "$RUNNER_TEMP/stray"
           flags=()
           if [[ "$PRERELEASE" == "false" && -n "$DRAFT_ID" ]]; then
             # A final release carries the draft's notes, as approved before running this.
@@ -259,13 +280,3 @@ jobs:
           gh release create "$TAG" "$ZIP" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "$TAG" "${flags[@]}"
 
-      # A release candidate keeps the draft: the final release that ends its series takes the
-      # draft's notes, and test builds take their version from it.
-      - name: Delete the draft the final release replaces
-        if: needs.prepare.outputs.prerelease == 'false' && needs.prepare.outputs.draft_id != ''
-        run: |
-          if ! gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$DRAFT_ID" --silent 2> "$RUNNER_TEMP/error"; then
-            cat "$RUNNER_TEMP/error"
-            # Deleted by an earlier attempt of this run.
-            grep -q "HTTP 404" "$RUNNER_TEMP/error"
-          fi
