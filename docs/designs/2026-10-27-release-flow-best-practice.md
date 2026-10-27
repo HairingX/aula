@@ -1,6 +1,6 @@
 # Release flow: tested commit, version only in tag and zip
 
-Status: revised after design review rounds 1 and 2 (sections 9, 10). Branch: `chore/release-flow-best-practice`.
+Status: approved after design review round 3 (sections 9-11). Branch: `chore/release-flow-best-practice`.
 
 ## 1. Plan (Stage 1)
 
@@ -143,8 +143,9 @@ deleted with their branch, and a branch's `0.3.0b1` must not force the next rele
    "Re-run failed jobs":
    - tag: if the remote tag exists, fetch it and require `TAG^{commit} == sha` (the tag is
      annotated, so the ref names the tag object), else create and push it;
-   - release: if it exists, `gh release upload --clobber` the zip, else `gh release create
-     --verify-tag` with the zip; an RC as `--prerelease --latest=false` with GitHub-generated
+   - release: if a published release exists for the tag (`GET releases/tags/{tag}`, which never
+     returns drafts; `gh release view` would also find the draft of the same tag name), `gh release
+     upload --clobber` the zip to it, else `gh release create --verify-tag` with the zip; an RC as `--prerelease --latest=false` with GitHub-generated
      notes from the previous tag, a final release with the captured draft body;
    - final release only: delete the captured draft id; a 404 (already deleted) is accepted.
    "Re-run all jobs" is refused by `prepare` (the tag is no longer higher), by design.
@@ -278,3 +279,14 @@ Both teams: REQUEST CHANGES, nothing blocking. All resolved in sections 3-6:
 | S4 | A stale test-build tag (`0.3.0b1`) opens a "series" and forces the next release to `0.3.0` (also in the sibling) | Only `rc` opens a series; `b` tags ignored by the version logic; tests |
 | S5 | Cleanup in its own group races Test build: a build finishing after cleanup leaves an orphan beta | Test build re-checks the branch exists just before publishing; cleanup not in `release` (GitHub's one-pending-run-per-group would let it cancel a pending release) |
 | S6 | HACS: offers only pre-releases newer than the newest final; needs a final among the first 30 | Added to section 5 |
+
+## 11. Design review round 3 (consensus)
+
+- Architecture + code trace: **APPROVE**. Note: a test build fails while no draft exists (after a
+  final release, before the next merge); documented in `CLAUDE.md`.
+- Concurrency + data + HA: all round-2 findings resolved; one new should-fix and one nit:
+  - T1 "release exists?" must not match the draft of the same tag name: resolved as the team
+    asked, with `GET releases/tags/{tag}` (section 4, publish).
+  - T2 cleanup runs when a PR is closed but its branch kept; a test build finishing after that
+    still publishes: accepted and documented (test builds can run on branches without a PR, so
+    an open PR cannot be required); the next cleanup or the branch's deletion removes it.
