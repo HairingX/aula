@@ -69,19 +69,26 @@ class TestBranchTestBuilds(unittest.TestCase):
         },
     ]
 
-    def _select(self, branch: str) -> list[str]:
+    def _select(self, branch: str, tag: str | None = None) -> list[str]:
+        env = {key: value for key, value in os.environ.items() if key != "TAG"}
+        env["BRANCH"] = branch
+        if tag is not None:
+            env["TAG"] = tag
         result = subprocess.run(
             ["jq", "-r", "-f", str(BRANCH_TEST_BUILDS)],
             input=json.dumps(self.RELEASES),
             capture_output=True,
             text=True,
             check=True,
-            env={**os.environ, "BRANCH": branch},
+            env=env,
         )
         return result.stdout.split()
 
     def test_only_the_branchs_own_test_builds_are_selected(self) -> None:
         self.assertEqual(self._select("fix/a"), ["v0.2.9b1", "v0.2.9b6"])
+
+    def test_the_test_build_being_published_is_not_selected(self) -> None:
+        self.assertEqual(self._select("fix/a", tag="v0.2.9b6"), ["v0.2.9b1"])
 
     def test_a_branch_whose_name_starts_another_does_not_select_it(self) -> None:
         self.assertEqual(self._select("fix/ab"), ["v0.2.9b2"])

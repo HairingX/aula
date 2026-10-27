@@ -306,6 +306,7 @@ Each finding was checked against source before it was fixed:
 | I5 | Test build in the `release` group can cancel a pending release (one pending run per group) | GitHub concurrency docs | own group `test-build`; releases ignore test-build tags |
 | I6 | HACS validation does not validate the commit published: `hacs/action` validates through the API at the event's ref unless `REPOSITORY_REF` is set | HACS `action/action.py:114-158` | `REPOSITORY_REF` set to the commit for workflow calls (also missing in the sibling) |
 | I7 | `str.splitlines()` splits JSON lines on U+2028/U+0085 inside a pull request title | reproduced | split on `\n` only; test |
+| I9 | A re-run of a test build after an interrupted upload selected its own draft as a previous build and deleted the tag | Stage 9 review | the selection skips the tag being published; test |
 | I8 | Tests that survived mutations (draft sort key, tag strip, `.dev` filter) | mutation run | tests strengthened; 7 mutations of the version logic each fail a test |
 
 Accepted, not changed: a release whose merged pull requests are all chores passes the change check
