@@ -1,0 +1,42 @@
+# Not a package: Home Assistant loads the integration from custom_components/. This file holds
+# the settings of the tools the repository is checked with.
+
+[tool.pytest.ini_options]
+# pytest-homeassistant-custom-component runs every async test in Home Assistant's own loop.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = ["live: needs a real Aula account; skipped unless one is configured"]
+
+[tool.pyright]
+# The standard belongs to the repository, not to a personal editor setting: an IDE and a CI
+# run must agree on what counts as an error.
+include = ["custom_components", "tests"]
+exclude = ["**/__pycache__", "**/.venv"]
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "none"
+# Not yet checked, during the transition below; each pull request takes files off this list.
+ignore = [
+    "custom_components/aula/aula_client.py",
+    "custom_components/aula/aula_login_client/client.py",
+    "custom_components/aula/aula_login_client/mitid_browserclient/BrowserClient.py",
+    "custom_components/aula/aula_login_client/mitid_browserclient/CustomSRP.py",
+    "custom_components/aula/aula_login_client/mitid_browserclient/Helpers.py",
+    "custom_components/aula/aula_login_client/mitid_browserclient/__init__.py",
+    "custom_components/aula/aula_proxy/aula_proxy_client.py",
+    "custom_components/aula/aula_proxy/models/aula_easyiq_weekplan_parser.py",
+    "custom_components/aula/calendar.py",
+    "custom_components/aula/config_flow.py",
+    "custom_components/aula/views.py",
+    "tests/aula_proxy/test_easyiq_weekplan.py",
+    "tests/aula_proxy/test_error_handling.py",
+    "tests/aula_proxy/test_newsletter.py",
+    "tests/aula_proxy/test_notifications.py",
+]
+
+[tool.ha-integration-workflows]
+transition = """The integration was written before the shared standard: its MitID login, \
+config flow, views and client are typed and tested module by module."""
+# The coverage the tests reach now; each pull request raises it, until it is 100.
+coverage = 28
+libraries = []

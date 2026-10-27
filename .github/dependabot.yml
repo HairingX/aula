@@ -1,12 +1,28 @@
+# Proposes updates to the pinned actions and test tools as pull requests, which the tests then
+# check before anything is merged.
+#
+# Shared by every integration of the owner, from HairingX/ha_integration_workflows; this file is
+# a copy of its template and is checked to stay so.
 version: 2
 updates:
-- package-ecosystem: github-actions
-  directory: "/"
-  schedule:
-    interval: weekly
-- package-ecosystem: pip
-  directory: "/"
-  schedule:
-    interval: weekly
-  labels:
-  - dependencies
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    assignees:
+      - HairingX
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    assignees:
+      - HairingX
+    ignore:
+      # Home Assistant's package constraints decide pymodbus, so it moves with the pinned Home
+      # Assistant release; the tests fail when the two disagree.
+      - dependency-name: pymodbus

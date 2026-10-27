@@ -1,0 +1,12 @@
+# What the tests and the type check run with. Pinned, so a new release cannot turn a build red by
+# itself; Dependabot proposes each update as a pull request.
+#
+# pytest-homeassistant-custom-component pins the Home Assistant release it tests against;
+# hacs.json requires that release.
+pytest-homeassistant-custom-component==0.13.375
+pyright==1.1.414
+# The integration's requirements, as the manifest pins them.
+beautifulsoup4==4.15.0
+lxml==6.1.3
+pycryptodomex==3.24.1
+qrcode==8.2

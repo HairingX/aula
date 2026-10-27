@@ -1,4 +1,12 @@
 {
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "tests",
+        "-v",
+        "--capture=sys",
+        "-rP",
+    ],
     "files.associations": {
         "*.yaml": "home-assistant"
     },
@@ -14,14 +22,7 @@
         "black"
     ],
     "python.formatting.provider": "black",
-    "python.testing.unittestArgs": [
-        "-v",
-        "-s",
-        "./custom_components/aula/aula_proxy",
-        "-p",
-        "test_*.py"
-    ],
-    "python.testing.pytestEnabled": false,
-    "python.testing.unittestEnabled": true
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportMissingTypeStubs": "none"
+    },
 }
-// /custom_components/aula/aula_proxy

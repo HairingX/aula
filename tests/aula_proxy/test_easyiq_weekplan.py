@@ -8,7 +8,7 @@ from custom_components.aula.aula_proxy.models.aula_easyiq_weekplan_parser import
 
 class TestEasyiqWeekplan(unittest.TestCase):
     def _load_fixture(self, filename: str):
-        filepath = os.path.join(os.path.dirname(__file__), "test_messages", filename)
+        filepath = os.path.join(os.path.dirname(__file__), "fixtures", filename)
         with open(filepath, "r") as f:
             return json.load(f)
 

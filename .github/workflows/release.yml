@@ -1,68 +1,52 @@
 name: Release
 
-# Single release entry point.
-# - Leave the "version" input empty (the normal path) to resolve the version
-#   from the newest draft release maintained by release-drafter.yml.
-# - Fill it in to override that (e.g. jumping minor without re-labelling merged
-#   PRs). A supplied version short-circuits before the draft lookup.
-# Either way the shared composite action performs the bump, tag, zip and publish.
-
+# Run this from the Actions tab, on main, once the maintainer has approved the draft release and
+# its version. Never publish the draft release by hand: HACS installs the zip a release carries,
+# which only this workflow builds.
+#
+# The workflows and the tools are shared by every integration of the owner, from
+# HairingX/ha_integration_workflows; this file is a copy of its template and is checked to stay so.
 on:
   workflow_dispatch:
     inputs:
+      release:
+        description: >-
+          What to release. The version is worked out from the tags and the draft release: the
+          next release candidate, or the final release that ends the series.
+        required: true
+        type: choice
+        options:
+          - release candidate
+          - final release
+        default: release candidate
       version:
-        description: 'Version to release (X.Y.Z or X.Y.Z-suffix, no v prefix). Leave empty to use the version from the newest draft release.'
+        description: >-
+          Override, only for a new major version, which is never worked out, or when the version
+          worked out is wrong: canonical PEP 440 without a v, such as 1.0.0 or 1.0.0rc1, of the
+          kind chosen above. It must still be higher than every version released.
         required: false
         type: string
 
-permissions:
-  contents: write
+permissions: {}
 
+# GitHub keeps one waiting run per group: a third dispatch cancels the one waiting.
 concurrency:
   group: release
   cancel-in-progress: false
 
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   release:
-    name: Resolve version and publish
-    runs-on: ubuntu-latest
+    name: Release
     permissions:
       contents: write
-    steps:
-      - name: Resolve version
-        id: resolve
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          # A supplied version overrides everything and skips the draft lookup.
-          if [[ -n "$INPUT_VERSION" ]]; then
-            echo "Using the supplied version: $INPUT_VERSION"
-            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          tag_name=$(gh api "repos/$REPO/releases" \
-            --jq '[.[] | select(.draft==true)] | sort_by(.created_at) | reverse | .[0].tag_name // empty')
-          if [[ -z "$tag_name" ]]; then
-            echo "::error::No draft release found. Wait for the Release Drafter workflow to create a draft, or supply a version."
-            exit 1
-          fi
-          if [[ ! "$tag_name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.-]+)?$ ]]; then
-            echo "::error::Draft tag_name has unexpected format: $tag_name (expected vX.Y.Z or vX.Y.Z-suffix)"
-            exit 1
-          fi
-          version="${tag_name#v}"
-          echo "Resolved version from draft: $version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Check out repository (so the local composite action is on disk)
-        uses: actions/checkout@v6
-        with:
-          ref: main
-
-      - name: Publish release
-        uses: ./.github/actions/release-publish
-        with:
-          version: ${{ steps.resolve.outputs.version }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      pull-requests: read
+      actions: read
+    uses: HairingX/ha_integration_workflows/.github/workflows/release.yml@v1
+    with:
+      release: ${{ inputs.release }}
+      version: ${{ inputs.version }}
