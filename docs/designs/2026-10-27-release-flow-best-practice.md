@@ -1,6 +1,6 @@
 # Release flow: tested commit, version only in tag and zip
 
-Status: proposed (Stage 2). Branch: `chore/release-flow-best-practice`.
+Status: revised after design review round 1 (section 9). Branch: `chore/release-flow-best-practice`.
 
 ## 1. Plan (Stage 1)
 
@@ -63,8 +63,9 @@ Weaknesses of the current flow (`release.yml` + composite `release-publish`), ea
   that was zipped.
 - **W9 A wrong label can release a major.** `version-resolver.major.labels: ['major']`.
 - **W10 Deprecated drafter syntax**, and notes list chores and dependency bumps users do not get.
-- **W11 Steps run as `bash -e` without `pipefail`** (no explicit `shell: bash`), so a failing
-  command piped into another fails nothing.
+- **W11 Workflow steps run as `bash -e` without `pipefail`** (`release.yml`, `release-dev.yml`,
+  `tests.yml`, `hacs-validate.yml` set no shell; the composite's steps do), so a failing command
+  piped into another fails nothing.
 
 ## 3. Affected components
 
@@ -203,3 +204,35 @@ Follows the sibling repository's flow; least-privilege tokens; `persist-credenti
 nothing is pushed; one source of truth for the version (tag) and a check that the zip agrees; no
 over-engineering: release logic is the sibling's, minus the library-branch support this repository
 does not need.
+
+## 9. Design review round 1 and revisions
+
+Two review teams (architecture + code trace; concurrency + data + HA compliance) returned
+REQUEST CHANGES with no blocking findings. Each finding and its resolution:
+
+| # | Finding | Resolution |
+|---|---|---|
+| R1 | Deleting the draft on a release candidate leaves the final release without the draft's notes and makes every test build fail until the next merge (the sibling deletes it on every publish) | The draft is deleted only by a final release |
+| R2 | Test-build replace/cleanup match `test-build-branch: <branch>` by substring: `fix/a` removes `fix/ab`'s builds | Exact line match in jq with `--arg`; a test drives the jq filter |
+| R3 | `scorecards.yml`, `close-inactive-issues.yml` lack `shell: bash` and would fail the workflow test | Both get `defaults.run.shell: bash` |
+| R4 | `AGENT_WORKFLOW.md` (manifest version check, `release-dev.yml`) and `CLAUDE.md` ("Version tracked in manifest.json") conflict | Updated; the mandatory maintainer approval of draft and version before dispatch is kept |
+| R5 | What writes a test build's version was unspecified; the sibling re-dumps JSON | `release_version.py write` everywhere, with the "only the manifest changed" guard; `tests.yml` takes no `branch` input |
+| R6 | `packaging` unpinned for script tests | `tests.yml` installs `packaging==26.3` |
+| R7 | `test_build.py` is collected by unittest discovery | No such file: the test-build version is a `release_version.py test-build` subcommand (pure function over the tag list, unit-tested) |
+| R8 | W11 overstated | Corrected in section 2 |
+| R9 | Installing a branch through HACS shows `0.0.0` | Documented in `CLAUDE.md` |
+| R10 | Facts needing the API | Evidence below |
+| C1 | "Re-run failed jobs" reuses `prepare`'s outputs, so the tag push fails once the tag exists; a failed upload leaves a release without a zip | Publish is idempotent per step: tag push skipped when the remote tag already points at `sha`, refused when it points elsewhere; an existing release gets the zip with `gh release upload --clobber` |
+| C2 | The draft is read twice; a merge during the run rewrites it | `prepare` captures the draft's id, tag and body (base64) once and requires a successful Release Drafter run on `sha` (`actions: read`), so the notes describe exactly `sha`; `publish` deletes that id only |
+| C3 | Draft lookup reads one page of 30 releases | All pages, `per_page=100`, newest draft picked by `release_version.py draft` (unit-tested) |
+| C4 | Permissions | Unchanged; `contents: write` is needed to list drafts |
+| C5 | Cleanup racing a replace hits 404 | Cleanup in its own concurrency group; a delete that fails is accepted only when the release is already gone |
+| C6 | = R5 | |
+| C7 | A test build created after an RC is offered to HACS beta users | Verified in HACS source (`repositories/base.py`, `common_update_data`): HACS takes the first pre-release in GitHub's list, newest first, not the highest version, and reads only the first 30 releases (`returnlimit=30`), a final release among them. Documented: beta users get the newest pre-release, test build or RC; cleanup keeps test builds from pushing finals out of the 30 |
+| C8 | HACS claims unverified | Verified in the same source: drafts skipped, pre-releases only with `show_beta`, `zip_release` + `filename` downloads the asset (`download_zip_files`) |
+| C9 | HA compliance | No change |
+
+**Evidence for R10** (2026-10-27): GitHub API `releases` lists draft `v0.2.9` (body: #12, #13, #14) and
+19 published releases, no pre-release; `curl -L .../releases/download/v0.2.0/aula.zip` then
+`zipfile` reads `manifest.json` version `0.1.10`; job 98302733889 log has 9 `##[warning]Use of
+deprecated ...` lines (5 category `labels`, `exclude-labels`, `version-resolver.{major,minor,patch}.labels`).
