@@ -339,5 +339,11 @@
       },
       "name": "API Kald"
     }
+  },
+  "issues": {
+    "replaced_by_aula_connect": {
+      "title": "Aula er erstattet af Aula Connect",
+      "description": "Denne Aula-integration udvikles ikke længere. Aula Connect erstatter den, med nyt login og nye entiteter: installer Aula Connect gennem HACS fra {url}, og sæt den op. Ret derefter dine dashboards og automationer til dens entiteter. Fjern så denne integration, og afinstaller den i HACS."
+    }
   }
 }

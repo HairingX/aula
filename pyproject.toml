@@ -38,5 +38,5 @@ ignore = [
 transition = """The integration was written before the shared standard: its MitID login, \
 config flow, views and client are typed and tested module by module."""
 # The coverage the tests reach now; each pull request raises it, until it is 100.
-coverage = 28
+coverage = 32
 libraries = []

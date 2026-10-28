@@ -5,6 +5,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.loader import async_get_integration
 import logging
 
@@ -23,6 +24,11 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+REPLACED_BY_AULA_CONNECT = "replaced_by_aula_connect"
+"""The repair issue saying that Aula Connect replaces this integration."""
+
+AULA_CONNECT_URL = "https://github.com/HairingX/ha_aula_connect"
 PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
@@ -33,6 +39,16 @@ PLATFORMS: list[Platform] = [
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up platform from a ConfigEntry."""
     hass.data.setdefault(DOMAIN, {})
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        REPLACED_BY_AULA_CONNECT,
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        learn_more_url=AULA_CONNECT_URL,
+        translation_key=REPLACED_BY_AULA_CONNECT,
+        translation_placeholders={"url": AULA_CONNECT_URL},
+    )
 
     integration = await async_get_integration(hass, DOMAIN)
     _LOGGER.info(STARTUP, integration.version)
@@ -149,3 +165,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.debug("Failed to close client sessions during unload", exc_info=True)
     remove_hass_data(hass, entry)
     return True
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Withdraw the notice that Aula Connect replaces this integration once nothing uses it."""
+    if not any(other.entry_id != entry.entry_id for other in hass.config_entries.async_entries(DOMAIN)):
+        ir.async_delete_issue(hass, DOMAIN, REPLACED_BY_AULA_CONNECT)

@@ -339,5 +339,11 @@
       },
       "name": "API Call"
     }
+  },
+  "issues": {
+    "replaced_by_aula_connect": {
+      "title": "Aula is replaced by Aula Connect",
+      "description": "This Aula integration is no longer developed. Aula Connect replaces it, with a new login and new entities: install Aula Connect through HACS from {url} and set it up, then update your dashboards and automations to its entities. Remove this integration and uninstall it in HACS afterwards."
+    }
   }
 }
