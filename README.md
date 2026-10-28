@@ -3,6 +3,13 @@
 
 # Aula
 
+> [!WARNING]
+> **This integration is deprecated and no longer developed.** It is replaced by
+> [Aula Connect](https://github.com/HairingX/ha_aula_connect): install Aula Connect through HACS
+> and set it up, update your dashboards and automations to its entities, then remove this
+> integration and uninstall it in HACS. Aula Connect is a new integration: nothing moves over
+> from this one.
+
 This is a custom component for Home Assistant to integrate Aula.
 
 Available entities:
