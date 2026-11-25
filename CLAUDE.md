@@ -96,8 +96,8 @@ obvious from the name - one or two lines, no narrative.
 - pyright strict must report 0 errors (`pyright`); the configuration is in `pyproject.toml`.
   No `# type: ignore` and no rule turned off: where Home Assistant's own types force a choice,
   take the typed route (`_attr_` values rather than overridden properties).
-- The tests are pytest with pytest-homeassistant-custom-component, in `tests/`, and cover every
-  line of the integration; the build fails below 100%. Tests that need a real device are marked
+- The tests are pytest with pytest-homeassistant, Home Assistant's own test harness, in
+  `tests/`, and cover every line of the integration; the build fails below 100%. Tests that need a real device are marked
   `live`, skip themselves without one, and never run in CI.
 - A repository on its way to this standard says so under `[tool.hairingx-workflows]` in
   `pyproject.toml`: `transition` says why, and `coverage` the percentage its tests must reach
@@ -107,15 +107,19 @@ obvious from the name - one or two lines, no narrative.
 - Every problem found gets a test that fails without the fix.
 - A test fails when Home Assistant reports this integration using something deprecated.
 - Test tools, Home Assistant and the libraries are pinned in `requirements-test.txt`:
-  `pip install -r requirements-test.txt`. They need Python 3.14, as the pinned Home Assistant
-  does, on Linux or WSL.
+  `pip install -r requirements-test.txt`. They need the Python the pinned Home Assistant
+  requires, on Linux or WSL; the tests set it up from what Home Assistant states on PyPI.
 - The requirements follow hassfest's rules for a custom integration, which shares Home
   Assistant's Python environment, and the tests enforce them: a package Home Assistant itself
   installs is not listed; one Home Assistant's own integrations pin is required at a minimum
   version that admits theirs, and the tests run Home Assistant's version; any other is pinned
   with `==`, and the tests run that version. `requirements-test.txt` pins what the tests run.
-  `hacs.json` requires the Home Assistant version the tests run, and names the zip after the
-  domain.
+  `hacs.json` names the zip after the domain, and requires the oldest Home Assistant the
+  integration supports, no newer than the one pinned. The tests run on both: where `hacs.json`
+  names an older one, they run pyright, the tests and the requirements' rules again with it,
+  with the harness made for it and its own integrations' pins, each on the Python it requires.
+  It is raised only when the integration needs something newer; the harness exists from Home
+  Assistant 2026.11.0, the oldest the tests can run.
 - `quality_scale.yaml` states every rule of the Integration Quality Scale, with a reason for each
   exemption and each rule not yet met; the tests check it.
 - Translations live in `translations/en.json` and `translations/da.json`, which hold the same
@@ -128,9 +132,13 @@ obvious from the name - one or two lines, no narrative.
 Best practice is what Home Assistant and HACS require and recommend now; it moves with every
 release. After any change to the integration or to the libraries it uses:
 
-1. Test against the newest Home Assistant release: pin it in `requirements-test.txt` (through
-   pytest-homeassistant-custom-component) and `hacs.json`, then run the tests, pyright and
-   hassfest. A deprecation Home Assistant reports fails the tests.
+1. Test against the newest Home Assistant release: Dependabot proposes each release of
+   pytest-homeassistant, released with the Home Assistant of the same version, and the update
+   is merged by itself
+   when every check passes; one made for a Home Assistant beta is closed. When a check fails,
+   the integration follows Home Assistant in that pull request, which is assigned to the owner:
+   a deprecation Home Assistant reports fails the tests. Where following it takes something the
+   oldest Home Assistant in `hacs.json` lacks, raise `hacs.json` with it.
 2. Read the Integration Quality Scale rules and HACS's publishing requirements again, and bring
    `quality_scale.yaml` up to date.
 3. Read the Home Assistant developer blog since the last check for changes to what integrations
@@ -179,8 +187,12 @@ release it already created. **Re-run all jobs** is refused once the version is t
 The libraries come from PyPI at the version the manifest pins. **Release a library first**, then
 pin its version here in the manifest and `requirements-test.txt`.
 
-Actions are referred to by their major version where they publish one; Dependabot proposes a new
-major, and updates to the test tools, as pull requests.
+Actions are referred to by their major version where they publish one. Dependabot proposes each update of the test tools once it is three days old, all
+that are no new major version in one pull request a week, and **Merge Dependabot's updates**
+merges it once every check passes, then updates the release draft. It assigns the owner only an
+update that needs them: a new major version, or one a check fails. The actions are the
+template's, kept up to date in HairingX/workflows.
+Packages Home Assistant decides, and the owner's own libraries, are left out.
 
 ## Testing a branch on a real Home Assistant
 
@@ -188,9 +200,11 @@ HACS installs only releases, pre-releases and the default branch. To try a devel
 on a real Home Assistant, run the **Test build** workflow from the Actions tab on that branch:
 
 1. It tests and validates the branch's commit, then publishes it as a pre-release such as
-   `v0.1.0b3`: the next release's version - the draft's, or the patch after the last release
-   when there is no draft - with the first free `b<n>`. The branch's commit is tagged; the
-   version and the libraries are set only in the zip the pre-release carries.
+   `v0.1.0b57`: the next release's version - the draft's, or the patch after the last release
+   when there is no draft - with `b<n>` the number of its run, or higher, so that a new test
+   build is always higher than any before it and HACS offers it as an update. The branch's
+   commit is tagged; the version and the libraries are set only in the zip the pre-release
+   carries.
 2. Where a library listed under `[tool.hairingx-workflows] libraries` in `pyproject.toml`
    has a branch of the same name, the test build requires that branch's current commit, from
    GitHub; otherwise the version the manifest pins. Home Assistant then checks that requirement
